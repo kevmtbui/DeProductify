@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+assets/audio/*.mp3
+assets/audio/*.wav
+assets/images/*.png
+assets/images/*.jpg
+*.log
+

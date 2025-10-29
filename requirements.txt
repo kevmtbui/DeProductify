@@ -1,0 +1,24 @@
+# Screen capture and image processing
+mss>=10.0.0
+opencv-python>=4.8.0
+
+# OCR for text extraction
+pytesseract>=0.3.10
+
+# Window and system tracking
+pygetwindow>=0.0.9
+pyautogui>=0.9.54
+
+# GUI and overlay
+pygame>=2.5.0
+tkinter-tooltip>=2.3.0
+# Note: tkinter is included with Python on macOS, no separate install needed
+
+# AI integration
+requests>=2.31.0
+google-generativeai>=0.3.0
+
+# Utilities
+numpy>=1.24.0
+Pillow>=10.0.0
+
