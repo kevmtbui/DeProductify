@@ -499,14 +499,23 @@ class PerformativeProtocol:
             # System processes (Windows)
             'explorer.exe', 'dwm.exe', 'csrss.exe', 'services.exe', 'winlogon.exe',
             'lsass.exe', 'smss.exe', 'svchost.exe', 'System', 'Registry',
+            'conhost.exe', 'RuntimeBroker.exe',
             # System processes (Linux)
             'systemd', 'init', 'gnome-shell', 'plasma-desktop', 'xfce4-panel',
             'kwin_x11', 'Xorg', 'gdm', 'lightdm',
-            # Terminal/shells (keep user's terminal open)
-            'Terminal', 'iTerm2', 'Alacritty', 'cmd.exe', 'powershell.exe',
-            'gnome-terminal', 'konsole', 'xterm',
+            # Terminals (macOS)
+            'Terminal', 'iTerm2', 'iTerm', 'Alacritty', 'Kitty', 'Hyper',
+            'Warp', 'Tabby', 'WezTerm',
+            # Command Prompts/Shells (Windows)
+            'cmd.exe', 'powershell.exe', 'WindowsTerminal.exe', 'pwsh.exe',
+            'mintty.exe', 'ConEmu64.exe', 'ConEmu.exe',
+            # Terminals (Linux)
+            'gnome-terminal', 'konsole', 'xterm', 'terminator', 'tilix',
+            'kitty', 'alacritty', 'rxvt', 'urxvt', 'sakura', 'terminology',
+            # Shells (all platforms)
+            'bash', 'zsh', 'fish', 'sh', 'tcsh', 'ksh',
             # Python/DeProductify processes
-            'python', 'python3', 'Python',
+            'python', 'python3', 'Python', 'python.exe', 'python3.exe',
         }
         
         closed_count = 0
@@ -526,8 +535,13 @@ class PerformativeProtocol:
                     apps = result.stdout.strip().split(', ')
                     
                     for app in apps:
-                        # Skip if in keep_running list or if it's a system app
+                        # Skip if in keep_running list or if it's a system/terminal app
                         if app in keep_running or 'System' in app or 'Python' in app:
+                            continue
+                        
+                        # Extra protection for terminals (case-insensitive check)
+                        app_lower = app.lower()
+                        if any(term in app_lower for term in ['terminal', 'iterm', 'console', 'shell', 'prompt']):
                             continue
                         
                         try:
@@ -549,9 +563,14 @@ class PerformativeProtocol:
                 for proc in psutil.process_iter(['pid', 'name', 'exe']):
                     try:
                         proc_name = proc.info['name']
+                        proc_name_lower = proc_name.lower()
                         
                         # Skip system processes and DeProductify
-                        if proc_name in keep_running or proc_name.lower().startswith(('system', 'windows', 'microsoft')):
+                        if proc_name in keep_running or proc_name_lower.startswith(('system', 'windows', 'microsoft')):
+                            continue
+                        
+                        # Extra protection for terminals and command prompts
+                        if any(term in proc_name_lower for term in ['cmd', 'powershell', 'terminal', 'console', 'conhost', 'pwsh']):
                             continue
                         
                         # Skip if it's a console/background process
@@ -575,9 +594,14 @@ class PerformativeProtocol:
                 for proc in psutil.process_iter(['pid', 'name', 'exe']):
                     try:
                         proc_name = proc.info['name']
+                        proc_name_lower = proc_name.lower()
                         
                         # Skip system processes and DeProductify
                         if proc_name in keep_running or proc_name.startswith(('gvfs', 'dbus', 'systemd')):
+                            continue
+                        
+                        # Extra protection for terminals
+                        if any(term in proc_name_lower for term in ['terminal', 'konsole', 'xterm', 'gnome-terminal', 'shell']):
                             continue
                         
                         # Only close GUI applications (those with DISPLAY)
