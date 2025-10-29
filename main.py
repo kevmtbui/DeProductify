@@ -97,8 +97,12 @@ class DeProductifyOrchestrator:
         self.last_trigger_time = 0
         self.is_in_cooldown = False
         self.monitoring = False
+        self.game_detected = False
+        self.last_game_check_time = 0
+        self.game_check_interval = 5.0  # Check for games every 5 seconds
         
         print("\nDeProductify ready! Monitoring your productivity...\n")
+        print("💡 Game detection enabled - triggers disabled while gaming\n")
     
     def get_combined_productivity_score(self) -> Dict:
         """
@@ -214,6 +218,48 @@ class DeProductifyOrchestrator:
         
         return results
     
+    def check_for_game(self) -> Tuple[bool, str]:
+        """
+        Check if user is currently playing a game using Gemini AI.
+        
+        Returns:
+            Tuple of (is_game: bool, game_name: str)
+        """
+        current_time = time.time()
+        
+        # Only check periodically to save API calls
+        if current_time - self.last_game_check_time < self.game_check_interval:
+            return self.game_detected, ""
+        
+        self.last_game_check_time = current_time
+        
+        try:
+            # Get current window info
+            window_info = self.tracker.get_active_window()
+            if not window_info:
+                self.game_detected = False
+                return False, ""
+            
+            app_name = window_info.get('app_name', '')
+            window_title = window_info.get('window_title', '')
+            
+            # Use Gemini to detect if it's a game
+            if hasattr(self.detector, 'gemini_classifier') and self.detector.gemini_classifier:
+                is_game, reasoning = self.detector.gemini_classifier.is_game(app_name, window_title)
+                self.game_detected = is_game
+                
+                if is_game:
+                    game_name = app_name or window_title
+                    return True, game_name
+            
+            self.game_detected = False
+            return False, ""
+            
+        except Exception as e:
+            print(f"Warning: Game detection error: {e}")
+            self.game_detected = False
+            return False, ""
+    
     def should_trigger_protocol(self) -> Tuple[bool, str, float]:
         """
         Determine if Performative Protocol should be triggered.
@@ -221,6 +267,11 @@ class DeProductifyOrchestrator:
         Returns:
             Tuple of (should_trigger, reason, productivity_score)
         """
+        # Check if user is playing a game - disable all triggers if so
+        is_game, game_name = self.check_for_game()
+        if is_game:
+            return False, f"🎮 Game detected: {game_name} - triggers disabled", 0.0
+        
         # Check cooldown
         current_time = time.time()
         if self.is_in_cooldown:

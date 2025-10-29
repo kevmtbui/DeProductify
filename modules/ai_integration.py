@@ -75,6 +75,85 @@ class GeminiClassifier:
         combined = f"{app_name.lower().strip()}|{window_title.lower().strip()}|{ocr_text.lower().strip()}"
         return hashlib.md5(combined.encode()).hexdigest()
     
+    def is_game(
+        self,
+        app_name: str,
+        window_title: str,
+        force_refresh: bool = False
+    ) -> Tuple[bool, str]:
+        """
+        Detect if the current app/window is a game
+        
+        Args:
+            app_name: Name of the active application
+            window_title: Title of the active window
+            force_refresh: Force API call even if cached result exists
+            
+        Returns:
+            Tuple of (is_game: bool, reasoning: str)
+        """
+        # Generate cache key for game detection
+        cache_key = f"game_{self._generate_cache_key(app_name, window_title, '')}"
+        
+        # Check cache first
+        if not force_refresh and cache_key in self.cache:
+            cached = self.cache[cache_key]
+            return cached.get('is_game', False), cached.get('reasoning', 'Cached result')
+        
+        # Build game detection prompt
+        prompt = f"""Analyze the following application and determine if it is a game or gaming-related.
+
+Application Name: {app_name}
+Window Title: {window_title}
+
+Please respond in the following JSON format:
+{{
+    "is_game": true/false,
+    "reasoning": "brief explanation"
+}}
+
+Consider these as games:
+- Video games (Steam, Epic Games, game titles)
+- Gaming platforms (Discord gaming, Twitch, game launchers)
+- Mobile game emulators
+- Game development tools when actively playing/testing
+
+Do NOT consider as games:
+- Game development IDEs when coding
+- Game-related documentation/tutorials
+- YouTube videos about games (just watching)
+
+Respond ONLY with valid JSON, no additional text."""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            result_text = response.text.strip()
+            
+            # Parse response
+            import re
+            json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                is_game = bool(parsed.get('is_game', False))
+                reasoning = parsed.get('reasoning', 'AI classified as game')
+            else:
+                # Fallback parsing
+                is_game = 'is_game": true' in result_text or 'game' in result_text.lower()
+                reasoning = result_text[:100]
+            
+            # Cache result
+            self.cache[cache_key] = {
+                'is_game': is_game,
+                'reasoning': reasoning
+            }
+            self._save_cache()
+            
+            return is_game, reasoning
+            
+        except Exception as e:
+            # On error, assume not a game (don't block productivity detection on error)
+            return False, f'Error detecting game: {str(e)}'
+    
     def classify_productivity(
         self,
         app_name: str,
