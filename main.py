@@ -10,6 +10,8 @@ Combines all detection modules:
 """
 
 import time
+import platform
+import subprocess
 from typing import Dict, Optional, Tuple
 from modules.detection import ProductivityDetector
 from modules.tracking import WindowTracker
@@ -101,8 +103,19 @@ class DeProductifyOrchestrator:
         self.last_game_check_time = 0
         self.game_check_interval = 5.0  # Check for games every 5 seconds
         
+        # Warning system
+        self.warning_thresholds = {
+            0.3: "You're starting to look productive...",
+            0.4: "Productivity levels rising... take a break?",
+            0.45: "Warning: You're looking TOO productive!",
+        }
+        self.last_warning_level = 0
+        self.warning_cooldown = 30.0  # Don't spam warnings (30s between warnings)
+        self.last_warning_time = 0
+        
         print("\nDeProductify ready! Monitoring your productivity...\n")
-        print("💡 Game detection enabled - triggers disabled while gaming\n")
+        print("Game detection enabled - triggers disabled while gaming")
+        print("Warning notifications enabled - you'll be alerted as productivity climbs\n")
     
     def get_combined_productivity_score(self) -> Dict:
         """
@@ -218,6 +231,104 @@ class DeProductifyOrchestrator:
         
         return results
     
+    def send_notification(self, title: str, message: str):
+        """
+        Send a system notification (cross-platform)
+        
+        Args:
+            title: Notification title
+            message: Notification message
+        """
+        try:
+            system = platform.system()
+            
+            if system == 'Darwin':  # macOS
+                # Use osascript to show notification
+                script = f'display notification "{message}" with title "{title}"'
+                subprocess.run(
+                    ['osascript', '-e', script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            elif system == 'Windows':
+                # Use PowerShell to show notification
+                script = f'''
+                [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+                $Template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+                $RawXml = [xml] $Template.GetXml()
+                ($RawXml.toast.visual.binding.text|where {{$_.id -eq "1"}}).AppendChild($RawXml.CreateTextNode("{title}")) > $null
+                ($RawXml.toast.visual.binding.text|where {{$_.id -eq "2"}}).AppendChild($RawXml.CreateTextNode("{message}")) > $null
+                $SerializedXml = New-Object Windows.Data.Xml.Dom.XmlDocument
+                $SerializedXml.LoadXml($RawXml.OuterXml)
+                $Toast = [Windows.UI.Notifications.ToastNotification]::new($SerializedXml)
+                $Toast.Tag = "DeProductify"
+                $Toast.Group = "DeProductify"
+                $Notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("DeProductify")
+                $Notifier.Show($Toast);
+                '''
+                subprocess.run(
+                    ['powershell', '-Command', script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+            else:  # Linux
+                # Use notify-send if available
+                try:
+                    subprocess.run(
+                        ['notify-send', title, message],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                except FileNotFoundError:
+                    # Fallback to console if notify-send not available
+                    print(f"\nNOTIFICATION: {title}")
+                    print(f"   {message}\n")
+        except Exception as e:
+            # Fallback to console output
+            print(f"\nNOTIFICATION: {title}")
+            print(f"   {message}\n")
+    
+    def check_and_send_warnings(self, productivity_score: float):
+        """
+        Check productivity score and send warning notifications at thresholds
+        
+        Args:
+            productivity_score: Current combined productivity score (0.0-1.0)
+        """
+        current_time = time.time()
+        
+        # Don't spam warnings - respect cooldown
+        if current_time - self.last_warning_time < self.warning_cooldown:
+            return
+        
+        # Check each threshold in order (low to high)
+        for threshold, message in sorted(self.warning_thresholds.items()):
+            # Only warn if:
+            # 1. Score crossed this threshold
+            # 2. Haven't warned at this level yet
+            # 3. This is higher than last warning
+            if productivity_score >= threshold and threshold > self.last_warning_level:
+                # Send notification
+                self.send_notification("DeProductify Alert", message)
+                
+                # Update state
+                self.last_warning_level = threshold
+                self.last_warning_time = current_time
+                
+                # Log to console too
+                print(f"\n{'='*60}")
+                print(f"WARNING: Productivity at {productivity_score:.0%}")
+                print(f"   {message}")
+                print(f"{'='*60}\n")
+                
+                # Only send one warning at a time
+                break
+        
+        # Reset warning level if score drops below all thresholds
+        if productivity_score < min(self.warning_thresholds.keys()):
+            self.last_warning_level = 0
+    
     def check_for_game(self) -> Tuple[bool, str]:
         """
         Check if user is currently playing a game using Gemini AI.
@@ -270,7 +381,7 @@ class DeProductifyOrchestrator:
         # Check if user is playing a game - disable all triggers if so
         is_game, game_name = self.check_for_game()
         if is_game:
-            return False, f"🎮 Game detected: {game_name} - triggers disabled", 0.0
+            return False, f"Game detected: {game_name} - triggers disabled", 0.0
         
         # Check cooldown
         current_time = time.time()
@@ -306,10 +417,23 @@ class DeProductifyOrchestrator:
                 # Print status
                 print(f"[{time.strftime('%H:%M:%S')}] Productivity Score: {score:.2f} | {reason[:60]}")
                 
+                # Check for warnings (before triggering)
+                if not should_trigger and not self.is_in_cooldown and score > 0:
+                    self.check_and_send_warnings(score)
+                
                 if should_trigger:
+                    # Send final warning before triggering
+                    self.send_notification(
+                        "DeProductify - Protocol Activated!",
+                        "You've been too productive! Time for the Performative Protocol..."
+                    )
+                    
                     # Trigger the Performative Protocol
                     self.last_trigger_time = time.time()
                     self.is_in_cooldown = True
+                    
+                    # Reset warning level after triggering
+                    self.last_warning_level = 0
                     
                     trigger_performative_protocol(reason, score)
                     
