@@ -682,3 +682,49 @@ class PerformativeProtocol:
         self.matcha_clicks = 0
         
         print("✅ Overlay dismissed! App closing...")
+
+
+# Helper functions for integration with other modules
+
+def launch_performative_protocol(reason: str, productivity_score: float) -> bool:
+    """
+    Launch the Performative Protocol overlay.
+    
+    This function provides a simple interface for other modules to trigger the protocol.
+    
+    Args:
+        reason: Why the protocol was triggered
+        productivity_score: Combined productivity score (0.0-1.0)
+    
+    Returns:
+        True if protocol completed successfully, False otherwise
+    """
+    import tkinter as tk
+    
+    try:
+        # Create root window
+        root = tk.Tk()
+        root.withdraw()
+        
+        print(f"\n🎭 Launching Performative Protocol...")
+        print(f"  Reason: {reason}")
+        print(f"  Score: {productivity_score:.2f}")
+        
+        # Create and activate protocol
+        protocol = PerformativeProtocol()
+        protocol.activate()
+        
+        # Start event loop
+        root.mainloop()
+        
+        return True
+    except Exception as e:
+        print(f"❌ Failed to launch protocol: {e}")
+        return False
+
+
+def stop_protocol():
+    """Stop any running protocol overlay."""
+    # The protocol auto-stops when dismissed via matcha clicks
+    # This is kept for compatibility with other modules
+    pass
