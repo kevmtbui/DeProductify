@@ -3,10 +3,14 @@ DeProductify - Main orchestrator
 Detects productivity and triggers Performative Protocol
 """
 
+from modules.gui import DeProductifyGUI
+
+
 def main():
-    print("DeProductify starting...")
-    # TODO: Initialize GUI and detection pipeline
-    pass
+    """Main entry point for DeProductify"""
+    app = DeProductifyGUI()
+    app.run()
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-# 🎀 DeProductify
+# DeProductify
 
 > "Detects when you're working too hard — and makes it look like you're not."
 
@@ -8,7 +8,7 @@ Instead of blocking productivity, DeProductify masks it with an online persona: 
 
 ---
 
-## 🎯 Objective
+## Objective
 
 1. **Detect** when users are being too productive (studying, coding, writing reports)
 2. **Trigger** the Performative Protocol, overlaying a soothing, curated "creative aesthetic"
@@ -17,7 +17,7 @@ Instead of blocking productivity, DeProductify masks it with an online persona: 
 
 ---
 
-## 🧩 Core Features
+## Core Features
 
 ### 1. Screen Monitoring Engine
 **Description:** Captures screen frames & active window data in real time  
@@ -45,7 +45,7 @@ Instead of blocking productivity, DeProductify masks it with an online persona: 
 
 ---
 
-## 🚨 Detection Triggers
+## Detection Triggers
 
 DeProductify uses multiple detection methods across 4 modules to identify productivity:
 
@@ -66,7 +66,7 @@ DeProductify uses multiple detection methods across 4 modules to identify produc
 
 ---
 
-## 🛠️ Technical Stack
+## Technical Stack
 
 ### Screen Capture & Image Processing
 - **mss** - Fast screen capture
@@ -94,7 +94,7 @@ DeProductify uses multiple detection methods across 4 modules to identify produc
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 DeProductify/
@@ -114,7 +114,7 @@ DeProductify/
 
 ---
 
-## ⚙️ Setup Instructions
+## Setup Instructions
 
 ### 1. Install Tesseract OCR (Required)
 
@@ -165,7 +165,7 @@ python main.py
 
 ---
 
-## 🎨 Performative Protocol
+## Performative Protocol
 
 When productivity is detected, DeProductify activates the Performative Protocol:
 
@@ -181,7 +181,7 @@ When productivity is detected, DeProductify activates the Performative Protocol:
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 Default thresholds (temporary - will be configurable):
 
@@ -194,7 +194,7 @@ These can be adjusted later based on testing and user preferences.
 
 ---
 
-## 📝 Notes
+## Notes
 
 - This is a hackathon project, not a production application
 - Privacy: Screen capture may involve sensitive data
@@ -203,7 +203,7 @@ These can be adjusted later based on testing and user preferences.
 
 ---
 
-## 🚀 Future Enhancements
+## Future Enhancements
 
 - Configurable detection thresholds
 - Customizable overlay assets
@@ -213,7 +213,7 @@ These can be adjusted later based on testing and user preferences.
 
 ---
 
-## 📄 License
+## License
 
 Hackathon project - for demonstration purposes only.
 

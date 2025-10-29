@@ -11,7 +11,7 @@ pyautogui>=0.9.54
 
 # GUI and overlay
 pygame>=2.5.0
-tkinter-tooltip>=2.3.0
+customtkinter>=5.2.0
 # Note: tkinter is included with Python on macOS, no separate install needed
 
 # AI integration
