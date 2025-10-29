@@ -82,15 +82,15 @@ class WindowTracker:
         'spotify.com', 'soundcloud.com'
     }
     
-    def __init__(self, focus_duration_threshold: float = 300.0, 
-                 silence_duration_threshold: float = 60.0,
+    def __init__(self, focus_duration_threshold: float = 60.0, 
+                 silence_duration_threshold: float = 10.0,
                  silence_volume_threshold: float = 0.01):
         """
         Initialize window tracker
         
         Args:
-            focus_duration_threshold: Seconds of continuous focus before considering it productive (default: 5 minutes)
-            silence_duration_threshold: Seconds of silence before flagging (default: 1 minute)
+            focus_duration_threshold: Seconds of continuous focus before considering it productive (default: 1 minute)
+            silence_duration_threshold: Seconds of silence before flagging (default: 10 seconds)
             silence_volume_threshold: Volume level below which is considered silent (0.0-1.0)
         """
         self.focus_duration_threshold = focus_duration_threshold
@@ -617,14 +617,14 @@ class WindowTracker:
         return False, "No productivity indicators detected"
 
 
-def create_tracker(focus_duration_threshold: float = 300.0,
-                   silence_duration_threshold: float = 60.0) -> WindowTracker:
+def create_tracker(focus_duration_threshold: float = 60.0,
+                   silence_duration_threshold: float = 10.0) -> WindowTracker:
     """
     Factory function to create a WindowTracker instance
     
     Args:
-        focus_duration_threshold: Seconds of continuous focus before considering productive
-        silence_duration_threshold: Seconds of silence before flagging
+        focus_duration_threshold: Seconds of continuous focus before considering productive (default: 1 minute)
+        silence_duration_threshold: Seconds of silence before flagging (default: 10 seconds)
         
     Returns:
         Configured WindowTracker instance
@@ -633,7 +633,6 @@ def create_tracker(focus_duration_threshold: float = 300.0,
         focus_duration_threshold=focus_duration_threshold,
         silence_duration_threshold=silence_duration_threshold
     )
-
 
 # Example usage
 if __name__ == "__main__":
@@ -674,3 +673,4 @@ if __name__ == "__main__":
         print(f"  Silence Duration: {silence_info['silence_duration']:.1f}s")
     else:
         print("No active window detected")
+

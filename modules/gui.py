@@ -6,6 +6,7 @@ Modern sleek design using CustomTkinter
 import customtkinter as ctk
 from tkinter import messagebox
 import queue
+import threading
 
 # Color palette
 COLORS = {
@@ -25,11 +26,11 @@ ctk.set_default_color_theme("blue")
 
 
 class DeProductifyGUI:
-    def __init__(self):
+    def __init__(self, orchestrator=None):
         # Create main window
         self.root = ctk.CTk()
         self.root.title("DeProductify")
-        self.root.geometry("480x245")
+        self.root.geometry("480x320")
         self.root.resizable(False, False)
         
         # Override default theme colors with our palette
@@ -38,12 +39,17 @@ class DeProductifyGUI:
         # State variables
         self.is_running = False
         self.status_queue = queue.Queue()
+        self.orchestrator = orchestrator
+        self.monitoring_thread = None
         
         # Default settings
         self.settings = {}
         
         self.setup_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Start checking for status updates
+        self.check_status_updates()
         
     def setup_ui(self):
         """Create the GUI layout"""
@@ -88,6 +94,22 @@ class DeProductifyGUI:
         )
         self.status_label.pack()
         
+        # Score display
+        score_frame = ctk.CTkFrame(
+            self.root,
+            fg_color="transparent",
+            corner_radius=0
+        )
+        score_frame.pack(pady=(10, 0))
+        
+        self.score_label = ctk.CTkLabel(
+            score_frame,
+            text="Productivity Score: 0.00 | Baseline: 0.0",
+            font=ctk.CTkFont(size=12),
+            text_color=COLORS['vinyl_dusk']
+        )
+        self.score_label.pack()
+        
         # Control buttons
         button_frame = ctk.CTkFrame(
             self.root,
@@ -127,14 +149,18 @@ class DeProductifyGUI:
         
     def start_monitoring(self):
         """Start the monitoring process"""
-        if not self.is_running:
+        if not self.is_running and self.orchestrator:
             self.is_running = True
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
             self.status_label.configure(text="● Running", text_color=COLORS['matcha_foam'])
             
-            # TODO: Start actual monitoring thread here
-            # This is where you'd initialize and start the detection modules
+            # Start monitoring in separate thread to keep GUI responsive
+            self.monitoring_thread = threading.Thread(
+                target=self._run_monitoring,
+                daemon=True
+            )
+            self.monitoring_thread.start()
             
     def stop_monitoring(self):
         """Stop the monitoring process"""
@@ -144,7 +170,43 @@ class DeProductifyGUI:
             self.stop_button.configure(state="disabled")
             self.status_label.configure(text="● Stopped", text_color=COLORS['labubu_lilac'])
             
-            # TODO: Stop monitoring thread and cleanup here
+            # Stop the orchestrator monitoring
+            if self.orchestrator:
+                self.orchestrator.stop_monitoring()
+    
+    def _run_monitoring(self):
+        """Run monitoring in background thread"""
+        try:
+            if self.orchestrator:
+                self.orchestrator.start_monitoring_with_gui(self.status_queue)
+        except Exception as e:
+            self.status_queue.put(("error", str(e)))
+    
+    def check_status_updates(self):
+        """Check for status updates from monitoring thread"""
+        try:
+            while not self.status_queue.empty():
+                msg_type, data = self.status_queue.get_nowait()
+                
+                if msg_type == "score":
+                    # Update score display
+                    score, baseline, raw = data
+                    self.score_label.configure(
+                        text=f"Score: {score:.2f} (Raw: {raw:.2f} + Baseline: {baseline:.1f})"
+                    )
+                elif msg_type == "stopped":
+                    # Monitoring stopped
+                    self.is_running = False
+                    self.start_button.configure(state="normal")
+                    self.stop_button.configure(state="disabled")
+                    self.status_label.configure(text="● Stopped", text_color=COLORS['labubu_lilac'])
+                elif msg_type == "error":
+                    messagebox.showerror("Error", f"Monitoring error: {data}")
+        except queue.Empty:
+            pass
+        
+        # Schedule next check
+        self.root.after(100, self.check_status_updates)
             
     def get_settings(self):
         """Get current settings dictionary"""

@@ -8,6 +8,13 @@ from typing import Optional, Dict, List, Tuple
 import numpy as np
 import cv2
 import pytesseract
+# Set explicit Tesseract path on Windows (user-installed default location)
+# If Tesseract is installed elsewhere, update this path accordingly.
+try:
+    pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+except Exception:
+    # Safe to ignore; availability is checked at runtime
+    pass
 import mss
 from PIL import Image
 
@@ -42,7 +49,8 @@ class ProductivityDetector:
             use_gemini_fallback: Whether to use Gemini AI as fallback when heuristics find nothing
             gemini_api_key: Optional Gemini API key (defaults to GEMINI_API_KEY env var)
         """
-        self.screen_capturer = mss.mss()
+        # Don't store screen_capturer here - create new instance per call for thread safety
+        self.screen_capturer = None
         
         # Thresholds (configurable)
         self.text_density_threshold = 300  # words per frame
@@ -60,6 +68,10 @@ class ProductivityDetector:
             except (ValueError, Exception) as e:
                 print(f"Warning: Gemini classifier not available: {e}")
                 self.use_gemini_fallback = False
+        
+        # Track OCR availability to avoid spamming errors
+        self._ocr_available = None  # None = not checked yet, True/False = known state
+        self._ocr_warning_shown = False
         
         # Work-related keywords
         self.work_keywords = [
@@ -87,22 +99,25 @@ class ProductivityDetector:
         
     def capture_screen(self) -> Optional[np.ndarray]:
         """
-        Capture the current screen as a numpy arraS y.
+        Capture the current screen as a numpy array.
         
         Returns:
             numpy array of screen image (BGR format) or None if capture fails
         """
         try:
-            # Capture primary monitor
-            monitor = self.screen_capturer.monitors[1]  # monitors[0] is all monitors, [1] is primary
-            screenshot = self.screen_capturer.grab(monitor)
-            
-            # Convert to numpy array and BGR format (for OpenCV)
-            img = np.array(screenshot)
-            # mss returns BGRA, convert to BGR
-            img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            
-            return img_bgr
+            # Create new mss instance for thread safety
+            # mss uses thread-local storage, so we need a fresh instance per thread
+            with mss.mss() as sct:
+                # Capture primary monitor
+                monitor = sct.monitors[1]  # monitors[0] is all monitors, [1] is primary
+                screenshot = sct.grab(monitor)
+                
+                # Convert to numpy array and BGR format (for OpenCV)
+                img = np.array(screenshot)
+                # mss returns BGRA, convert to BGR
+                img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                
+                return img_bgr
         except Exception as e:
             print(f"Error capturing screen: {e}")
             return None
@@ -117,6 +132,24 @@ class ProductivityDetector:
         Returns:
             Extracted text string
         """
+        # Check OCR availability first (only check once)
+        if self._ocr_available is None:
+            try:
+                # Quick test to see if Tesseract is available
+                pytesseract.get_tesseract_version()
+                self._ocr_available = True
+            except Exception:
+                self._ocr_available = False
+                if not self._ocr_warning_shown:
+                    print("\n⚠️  Warning: Tesseract OCR is not installed or not in PATH.")
+                    print("   OCR-based triggers (text detection, keywords, lecture, math) will be disabled.")
+                    print("   To install: https://github.com/UB-Mannheim/tesseract/wiki\n")
+                    self._ocr_warning_shown = True
+        
+        # If OCR not available, return empty (don't try and don't spam errors)
+        if not self._ocr_available:
+            return ""
+        
         try:
             # Convert BGR to RGB for PIL
             img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -128,7 +161,10 @@ class ProductivityDetector:
             
             return text
         except Exception as e:
-            print(f"Error in OCR text extraction: {e}")
+            # Only print error if we thought OCR was available
+            if self._ocr_available and not self._ocr_warning_shown:
+                print(f"Error in OCR text extraction: {e}")
+                self._ocr_warning_shown = True
             return ""
     
     def calculate_brightness(self, image: np.ndarray) -> float:
@@ -489,7 +525,6 @@ class ProductivityDetector:
         
         return results
 
-
 # Convenience function for quick testing
 def test_detection():
     """Quick test function to analyze current screen."""
@@ -529,3 +564,4 @@ if __name__ == "__main__":
         print(f"Error: {e}")
         print("\nNote: Make sure Tesseract OCR is installed!")
         print("Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki")
+

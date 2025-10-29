@@ -17,12 +17,11 @@ from modules.detection import ProductivityDetector
 from modules.tracking import WindowTracker
 from modules.behavioral import KeyboardTracker
 
-# Placeholder for overlay module (will be implemented by friend)
 def trigger_performative_protocol(reason: str, productivity_score: float):
     """
     Trigger the Performative Protocol overlay.
     
-    When overlay.py is ready, this will display:
+    Displays:
     - Matcha clickable overlay (user must click to dismiss)
     - Random indie music (Laufey, Clairo, Daniel Caesar, beabadoobee)
     - Aesthetic items (vinyls, totebag, labubu, books)
@@ -31,23 +30,14 @@ def trigger_performative_protocol(reason: str, productivity_score: float):
         reason: Why the protocol was triggered
         productivity_score: Combined productivity score that triggered it
     """
-    # Try to use overlay module if available
     try:
         from modules.overlay import launch_performative_protocol
-        # When overlay.py is fully implemented, this will launch it
+        # Launch the Performative Protocol overlay
         launch_performative_protocol(reason, productivity_score)
-    except (ImportError, NotImplementedError):
-        # Fallback placeholder until overlay is ready
-        print("\n" + "="*60)
-        print("PERFORMATIVE PROTOCOL™ ACTIVATED")
-        print("="*60)
-        print(f"Reason: {reason}")
-        print(f"Productivity Score: {productivity_score:.2f}")
-        print("\n[PLACEHOLDER] Overlay module will display:")
-        print("  - Matcha clickable button (must click to dismiss)")
-        print("  - Random music playback (indie playlist)")
-        print("  - Aesthetic overlay elements")
-        print("="*60 + "\n")
+    except Exception as e:
+        # Log error but don't crash the monitoring loop
+        print(f"\n❌ Error launching Performative Protocol: {e}")
+        print("Monitoring will continue...\n")
 
 
 class DeProductifyOrchestrator:
@@ -99,22 +89,17 @@ class DeProductifyOrchestrator:
         self.last_trigger_time = 0
         self.is_in_cooldown = False
         self.monitoring = False
-        self.game_detected = False
-        self.last_game_check_time = 0
-        self.game_check_interval = 5.0  # Check for games every 5 seconds
         
-        # Warning system
-        self.warning_thresholds = {
-            0.3: "You're starting to look productive...",
-            0.4: "Productivity levels rising... take a break?",
-            0.45: "Warning: You're looking TOO productive!",
-        }
+        # Baseline score system - accumulates and never decreases
+        self.baseline_score = 0.0  # Current baseline (minimum score)
+        self.previous_triggers = set()  # Track which triggers we've seen to avoid duplicate logging
+        
+        # Warning system - notifications for every 0.1 threshold
         self.last_warning_level = 0
-        self.warning_cooldown = 30.0  # Don't spam warnings (30s between warnings)
+        self.warning_cooldown = 5.0  # Short cooldown between warnings (5s)
         self.last_warning_time = 0
         
         print("\nDeProductify ready! Monitoring your productivity...\n")
-        print("Game detection enabled - triggers disabled while gaming")
         print("Warning notifications enabled - you'll be alerted as productivity climbs\n")
     
     def get_combined_productivity_score(self) -> Dict:
@@ -158,6 +143,25 @@ class DeProductifyOrchestrator:
             if detection_score > 0:
                 triggers_count = detection_results.get('triggers_activated', 0)
                 if triggers_count > 0:
+                    # Log individual detection triggers
+                    trigger_id = f"detection_{triggers_count}"
+                    if trigger_id not in self.previous_triggers:
+                        self.previous_triggers.add(trigger_id)
+                        print(f"  [TRIGGER] Detection: {triggers_count} visual triggers activated (Score: {detection_score:.2f})")
+                        if detection_results.get('bright_document'):
+                            print(f"    → Bright white document detected")
+                        if detection_results.get('text_density', 0) >= 300:
+                            print(f"    → Text-heavy screen ({detection_results.get('text_density', 0)} words)")
+                        if detection_results.get('work_keyword_count', 0) >= 3:
+                            print(f"    → Work keywords found ({detection_results.get('work_keyword_count', 0)} keywords)")
+                        if detection_results.get('lecture_detected'):
+                            print(f"    → Lecture content detected")
+                        if detection_results.get('math_detected'):
+                            print(f"    → Mathematical notation detected")
+                        if detection_results.get('gemini_used'):
+                            gemini = detection_results.get('gemini_classification', {})
+                            print(f"    → AI (Gemini) detected productivity ({gemini.get('confidence', 'unsure')})")
+                    
                     results['triggers'].append(f"Visual detection: {triggers_count} triggers")
                     if detection_results.get('gemini_used'):
                         results['triggers'].append("AI (Gemini) detected productivity")
@@ -167,31 +171,50 @@ class DeProductifyOrchestrator:
         
         # 2. Tracking Module (Window Focus) - Weight: 40%
         try:
+            # Get focus info for debugging and scoring
+            focus_info = self.tracker.track_window_focus()
+            
             should_trigger, reason = self.tracker.should_trigger_protocol(
                 require_focus_duration=True
             )
             
             if should_trigger:
                 tracking_score = 0.8  # High score if window tracking says productive
-                focus_info = self.tracker.track_window_focus()
                 focus_duration = focus_info.get('focus_duration', 0)
+                focus_duration_min = focus_info.get('focus_duration_minutes', 0)
                 app_name = focus_info.get('current_window', {}).get('app_name', 'Unknown')
+                window_title = focus_info.get('current_window', {}).get('window_title', '')
+                is_productive = focus_info.get('is_productive_app', False)
+                
+                # Log tracking trigger with productivity status
+                trigger_id = f"tracking_{app_name}_{int(focus_duration)}"
+                if trigger_id not in self.previous_triggers:
+                    self.previous_triggers.add(trigger_id)
+                    print(f"  [TRIGGER] Tracking: Productive app detected")
+                    print(f"    → App: '{app_name}'")
+                    print(f"    → Window: '{window_title[:50]}...'")
+                    print(f"    → Focus duration: {focus_duration:.0f}s ({focus_duration_min:.1f} min)")
+                    print(f"    → Score: {tracking_score:.2f}")
                 
                 results['tracking_score'] = tracking_score
                 results['triggers'].append(f"Active app focus: {app_name} ({focus_duration:.0f}s)")
             else:
-                # Calculate partial score based on focus duration
-                focus_info = self.tracker.track_window_focus()
-                focus_duration = focus_info.get('focus_duration', 0)
-                focus_duration_min = focus_info.get('focus_duration_minutes', 0)
-                
-                # Scale from 0-0.6 based on focus duration (max at 5 minutes)
-                if focus_duration > 0:
-                    tracking_score = min(focus_duration_min / 5.0 * 0.6, 0.6)
-                    results['tracking_score'] = tracking_score
-                    
-                    if focus_duration_min > 1:
-                        results['triggers'].append(f"Focus duration: {focus_duration_min:.1f} min")
+                # No trigger from tracking - only productive apps trigger, not duration alone
+                # Check for tab overload
+                window_title = focus_info.get('current_window', {}).get('window_title', '')
+                if self.tracker.detect_tab_bar_overload(window_title):
+                    tab_info = self.tracker.parse_tab_bar(window_title)
+                    if tab_info.get('is_productive_tab'):
+                        trigger_id = f"tab_overload_{tab_info.get('tab_count', 0)}"
+                        if trigger_id not in self.previous_triggers:
+                            self.previous_triggers.add(trigger_id)
+                            print(f"  [TRIGGER] Tracking: Tab overload detected ({tab_info.get('tab_count', 0)} tabs on productive site)")
+                        
+                        results['triggers'].append(f"Tab overload: {tab_info.get('tab_count', 0)} tabs")
+                        # Boost tracking score for tab overload
+                        if tracking_score < 0.7:
+                            tracking_score = 0.7
+                            results['tracking_score'] = tracking_score
         
         except Exception as e:
             print(f"Warning: Tracking module error: {e}")
@@ -207,6 +230,12 @@ class DeProductifyOrchestrator:
                 if keyboard_score > 0:
                     is_productive, kb_reason = self.keyboard_tracker.detect_productive_typing()
                     if is_productive:
+                        # Log keyboard trigger
+                        trigger_id = f"keyboard_{kb_reason[:30]}"
+                        if trigger_id not in self.previous_triggers:
+                            self.previous_triggers.add(trigger_id)
+                            print(f"  [TRIGGER] Keyboard: {kb_reason} (Score: {keyboard_score:.2f})")
+                        
                         results['triggers'].append(f"Keyboard: {kb_reason}")
         
         except Exception as e:
@@ -214,14 +243,29 @@ class DeProductifyOrchestrator:
         
         # Combine scores (weighted average)
         # Detection: 40%, Tracking: 40%, Keyboard: 20%
-        combined_score = (
+        raw_score = (
             results['detection_score'] * 0.4 +
             results['tracking_score'] * 0.4 +
             results['keyboard_score'] * 0.2
         )
         
+        # Apply baseline system: baseline is the highest 0.1 threshold ever reached
+        # It acts as a "floor" - you can never score below your highest threshold
+        # Update baseline if raw score crosses a new threshold
+        current_threshold = int(raw_score * 10) / 10.0  # Round down to nearest 0.1
+        if current_threshold > self.baseline_score:
+            old_baseline = self.baseline_score
+            self.baseline_score = current_threshold
+            print(f"  [BASELINE] Score baseline increased: {old_baseline:.1f} → {self.baseline_score:.1f}")
+        
+        # Combined score is the max of baseline or raw score
+        # This ensures once you hit a threshold, you can never drop below it
+        combined_score = max(self.baseline_score, raw_score)
+        
         # Cap at 1.0
         results['combined_score'] = min(combined_score, 1.0)
+        results['baseline_score'] = self.baseline_score
+        results['raw_score'] = raw_score
         
         # Build reason string
         if results['triggers']:
@@ -291,7 +335,7 @@ class DeProductifyOrchestrator:
     
     def check_and_send_warnings(self, productivity_score: float):
         """
-        Check productivity score and send warning notifications at thresholds
+        Check productivity score and send warning notifications at every 0.1 threshold
         
         Args:
             productivity_score: Current combined productivity score (0.0-1.0)
@@ -302,87 +346,45 @@ class DeProductifyOrchestrator:
         if current_time - self.last_warning_time < self.warning_cooldown:
             return
         
-        # Check each threshold in order (low to high)
-        for threshold, message in sorted(self.warning_thresholds.items()):
-            # Only warn if:
-            # 1. Score crossed this threshold
-            # 2. Haven't warned at this level yet
-            # 3. This is higher than last warning
-            if productivity_score >= threshold and threshold > self.last_warning_level:
-                # Send notification
-                self.send_notification("DeProductify Alert", message)
-                
-                # Update state
-                self.last_warning_level = threshold
-                self.last_warning_time = current_time
-                
-                # Log to console too
-                print(f"\n{'='*60}")
-                print(f"WARNING: Productivity at {productivity_score:.0%}")
-                print(f"   {message}")
-                print(f"{'='*60}\n")
-                
-                # Only send one warning at a time
-                break
+        # Calculate current threshold (every 0.1)
+        current_threshold = int(productivity_score * 10) / 10.0  # Round down to nearest 0.1
         
-        # Reset warning level if score drops below all thresholds
-        if productivity_score < min(self.warning_thresholds.keys()):
-            self.last_warning_level = 0
+        # Send notification if we crossed a new 0.1 threshold
+        if current_threshold > self.last_warning_level and current_threshold >= 0.1:
+            # Generate message based on threshold
+            percentage = int(current_threshold * 100)
+            if percentage >= 40:
+                message = f"⚠️ Productivity at {percentage}% - Protocol imminent!"
+            elif percentage >= 30:
+                message = f"⚠️ Productivity rising: {percentage}%"
+            elif percentage >= 20:
+                message = f"Productivity detected: {percentage}%"
+            else:
+                message = f"Productivity level: {percentage}%"
+            
+            # Send notification
+            self.send_notification("DeProductify Alert", message)
+            
+            # Update state
+            self.last_warning_level = current_threshold
+            self.last_warning_time = current_time
+            
+            # Log to console too
+            print(f"\n{'='*60}")
+            print(f"WARNING: Productivity at {percentage}%")
+            print(f"   {message}")
+            print(f"{'='*60}\n")
     
-    def check_for_game(self) -> Tuple[bool, str]:
-        """
-        Check if user is currently playing a game using Gemini AI.
-        
-        Returns:
-            Tuple of (is_game: bool, game_name: str)
-        """
-        current_time = time.time()
-        
-        # Only check periodically to save API calls
-        if current_time - self.last_game_check_time < self.game_check_interval:
-            return self.game_detected, ""
-        
-        self.last_game_check_time = current_time
-        
-        try:
-            # Get current window info
-            window_info = self.tracker.get_active_window()
-            if not window_info:
-                self.game_detected = False
-                return False, ""
-            
-            app_name = window_info.get('app_name', '')
-            window_title = window_info.get('window_title', '')
-            
-            # Use Gemini to detect if it's a game
-            if hasattr(self.detector, 'gemini_classifier') and self.detector.gemini_classifier:
-                is_game, reasoning = self.detector.gemini_classifier.is_game(app_name, window_title)
-                self.game_detected = is_game
-                
-                if is_game:
-                    game_name = app_name or window_title
-                    return True, game_name
-            
-            self.game_detected = False
-            return False, ""
-            
-        except Exception as e:
-            print(f"Warning: Game detection error: {e}")
-            self.game_detected = False
-            return False, ""
-    
-    def should_trigger_protocol(self) -> Tuple[bool, str, float]:
+    def should_trigger_protocol(self, productivity_data: Optional[Dict] = None) -> Tuple[bool, str, float]:
         """
         Determine if Performative Protocol should be triggered.
+        
+        Args:
+            productivity_data: Optional pre-computed productivity data (to avoid double computation)
         
         Returns:
             Tuple of (should_trigger, reason, productivity_score)
         """
-        # Check if user is playing a game - disable all triggers if so
-        is_game, game_name = self.check_for_game()
-        if is_game:
-            return False, f"Game detected: {game_name} - triggers disabled", 0.0
-        
         # Check cooldown
         current_time = time.time()
         if self.is_in_cooldown:
@@ -392,8 +394,9 @@ class DeProductifyOrchestrator:
             else:
                 self.is_in_cooldown = False
         
-        # Get combined productivity score
-        productivity_data = self.get_combined_productivity_score()
+        # Get combined productivity score (if not provided)
+        if productivity_data is None:
+            productivity_data = self.get_combined_productivity_score()
         combined_score = productivity_data['combined_score']
         
         # Check threshold
@@ -403,19 +406,35 @@ class DeProductifyOrchestrator:
         
         return False, productivity_data['reason'], combined_score
     
-    def start_monitoring(self):
-        """Start continuous productivity monitoring loop."""
+    def start_monitoring_with_gui(self, status_queue=None):
+        """Start monitoring with GUI support (sends updates to queue)"""
         self.monitoring = True
         print(f"Monitoring started (threshold: {self.productivity_threshold}, interval: {self.check_interval}s)")
-        print("Press Ctrl+C to stop\n")
+        if not status_queue:
+            print("Press Ctrl+C to stop\n")
         
         try:
             while self.monitoring:
-                # Check if we should trigger
-                should_trigger, reason, score = self.should_trigger_protocol()
+                # Get productivity data first (needed for display, baseline tracking, and trigger check)
+                productivity_data = self.get_combined_productivity_score()
                 
-                # Print status
-                print(f"[{time.strftime('%H:%M:%S')}] Productivity Score: {score:.2f} | {reason[:60]}")
+                # Check if we should trigger (pass data to avoid recomputing)
+                should_trigger, reason, score = self.should_trigger_protocol(productivity_data)
+                
+                # Print status with baseline info
+                baseline = productivity_data.get('baseline_score', 0.0)
+                raw = productivity_data.get('raw_score', 0.0)
+                if baseline > 0:
+                    print(f"[{time.strftime('%H:%M:%S')}] Score: {score:.2f} (Raw: {raw:.2f} + Baseline: {baseline:.1f}) | {reason[:50]}")
+                else:
+                    print(f"[{time.strftime('%H:%M:%S')}] Productivity Score: {score:.2f} | {reason[:60]}")
+                
+                # Send status to GUI if queue provided
+                if status_queue:
+                    try:
+                        status_queue.put(("score", (score, baseline, raw)))
+                    except:
+                        pass
                 
                 # Check for warnings (before triggering)
                 if not should_trigger and not self.is_in_cooldown and score > 0:
@@ -428,16 +447,46 @@ class DeProductifyOrchestrator:
                         "You've been too productive! Time for the Performative Protocol..."
                     )
                     
-                    # Trigger the Performative Protocol
+                    print(f"\n{'='*70}")
+                    print(f"🎀 PERFORMATIVE PROTOCOL™ ACTIVATING")
+                    print(f"{'='*70}")
+                    print(f"Reason: {reason}")
+                    baseline = productivity_data.get('baseline_score', 0.0)
+                    raw = productivity_data.get('raw_score', 0.0)
+                    print(f"Productivity Score: {score:.2f} (Raw: {raw:.2f} + Baseline: {baseline:.1f})")
+                    print(f"{'='*70}\n")
+                    
+                    # Trigger the Performative Protocol (overlay)
                     self.last_trigger_time = time.time()
                     self.is_in_cooldown = True
                     
-                    # Reset warning level after triggering
-                    self.last_warning_level = 0
+                    # Reset all tracking state
+                    print(f"  [RESET] Resetting all productivity tracking...")
+                    print(f"    • Baseline: {self.baseline_score:.1f} → 0.0")
+                    print(f"    • Warning level: {self.last_warning_level:.1f} → 0.0")
+                    print(f"    • Trigger history cleared")
                     
+                    self.baseline_score = 0.0
+                    self.last_warning_level = 0
+                    self.last_warning_time = 0
+                    self.previous_triggers.clear()
+                    
+                    # Auto-stop monitoring when overlay is triggered
+                    print("  [MONITORING] Auto-stopping monitoring...")
+                    self.monitoring = False
+                    
+                    # Update GUI if present
+                    if status_queue:
+                        try:
+                            status_queue.put(("stopped", None))
+                        except:
+                            pass
+                    
+                    # Launch overlay (this will show matcha button, play music, etc.)
                     trigger_performative_protocol(reason, score)
                     
-                    print(f"Cooldown active for {self.cooldown_seconds} seconds...")
+                    print(f"\nMonitoring stopped. Restart monitoring from GUI when ready.\n")
+                    print(f"All scores reset - fresh start when you resume!\n")
                 
                 # Wait before next check
                 time.sleep(self.check_interval)
@@ -446,6 +495,15 @@ class DeProductifyOrchestrator:
             print("\n\nMonitoring stopped by user")
         finally:
             self.stop_monitoring()
+            if status_queue:
+                try:
+                    status_queue.put(("stopped", None))
+                except:
+                    pass
+    
+    def start_monitoring(self):
+        """Start continuous productivity monitoring loop (console mode)."""
+        self.start_monitoring_with_gui(status_queue=None)
     
     def stop_monitoring(self):
         """Stop monitoring and clean up."""
@@ -458,7 +516,10 @@ class DeProductifyOrchestrator:
 
 
 def main():
-    """Main entry point."""
+    """Main entry point - launches GUI."""
+    # Import GUI here to avoid circular imports
+    from modules.gui import DeProductifyGUI
+    
     print("="*60)
     print("DeProductify")
     print("Detects when you're working too hard — and makes it look like you're not.")
@@ -466,14 +527,16 @@ def main():
     
     # Create orchestrator with custom settings
     orchestrator = DeProductifyOrchestrator(
-        productivity_threshold=0.5,      # Trigger at 50% productivity
-        check_interval=3.0,              # Check every 3 seconds
+        productivity_threshold=0.4,      # Trigger at 40% productivity (easier for demos)
+        check_interval=0.5,              # Check every 0.5 seconds (faster updates)
         use_keyboard_tracking=True,      # Enable keyboard tracking
         cooldown_seconds=120.0          # 2 minute cooldown after triggering
     )
     
-    # Start monitoring
-    orchestrator.start_monitoring()
+    # Launch GUI
+    print("Launching GUI...\n")
+    gui = DeProductifyGUI(orchestrator=orchestrator)
+    gui.run()
 
 
 if __name__ == "__main__":

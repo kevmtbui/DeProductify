@@ -29,7 +29,7 @@ class PerformativeProtocol:
         self.screen_height = 0
         
         # Color palette
-        self.bg_color = '#F5F1E8'  # clairo_linen (white background)
+        self.bg_color = '#F7EDD5'  # More beige/warm cream background
         
         # Audio playback
         self.audio_process = None
@@ -470,11 +470,11 @@ class PerformativeProtocol:
         # Repeat the shake sequence 3 times, then return to original
         rotation_angles = single_shake * 3 + [original_angle]
         
-        # Determine size based on image type
+        # Determine size based on image type (2x bigger)
         if img_type in ['matcha', 'cat']:
-            new_height = 180
+            new_height = 360
         else:
-            new_height = 250
+            new_height = 500
         
         original_size = original_img.size
         aspect_ratio = original_size[0] / original_size[1]
@@ -662,41 +662,56 @@ class PerformativeProtocol:
         
         # Create fullscreen overlay window
         self.overlay_window = tk.Toplevel()
+        
+        # Force fullscreen FIRST - must be set before overrideredirect
         self.overlay_window.attributes('-fullscreen', True)
+        
+        # Make it stay on top
         self.overlay_window.attributes('-topmost', True)
+        
+        # Remove window decorations AFTER setting fullscreen
         self.overlay_window.overrideredirect(True)
         
-        # Get screen dimensions
+        # On some systems, need to set the state too
+        try:
+            self.overlay_window.state('zoomed')  # Windows maximized
+        except:
+            pass
+        
+        # Force window to update and get actual dimensions
+        self.overlay_window.update()
+        
+        # Get actual screen dimensions
         self.screen_width = self.overlay_window.winfo_screenwidth()
         self.screen_height = self.overlay_window.winfo_screenheight()
+        
+        # Also get the window's actual size (in case DPI scaling affects it)
+        actual_width = self.overlay_window.winfo_width()
+        actual_height = self.overlay_window.winfo_height()
+        
+        print(f"Screen resolution: {self.screen_width}x{self.screen_height}")
+        print(f"Window actual size: {actual_width}x{actual_height}")
+        
+        # Use the larger of the two (to handle DPI scaling)
+        self.screen_width = max(self.screen_width, actual_width)
+        self.screen_height = max(self.screen_height, actual_height)
+        
+        # Set geometry explicitly to full screen
+        self.overlay_window.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
+        
+        # Force another update
+        self.overlay_window.update()
         
         # Load positions from file if requested
         if self.load_from_file and not self.custom_positions:
             self.custom_positions = self._load_scaled_positions(self.screen_width, self.screen_height)
         
-        # Make background fully transparent
-        # Use a unique color for transparency (bright green that won't appear in images)
-        transparency_color = '#00FF00'
-        
-        # Platform-specific transparency setup
-        try:
-            # macOS and some Linux systems support -transparentcolor
-            self.overlay_window.attributes('-transparentcolor', transparency_color)
-        except tk.TclError:
-            try:
-                # Windows alternative
-                self.overlay_window.wm_attributes('-transparentcolor', transparency_color)
-            except tk.TclError:
-                # Fallback: use alpha for semi-transparency if true transparency not supported
-                self.overlay_window.attributes('-alpha', 0.95)
-                transparency_color = self.bg_color
-        
-        # Create canvas with the transparency color as background
+        # Create canvas with solid background color
         self.canvas = Canvas(
             self.overlay_window,
             width=self.screen_width,
             height=self.screen_height,
-            bg=transparency_color,
+            bg=self.bg_color,
             highlightthickness=0
         )
         self.canvas.pack(fill='both', expand=True)
@@ -709,7 +724,7 @@ class PerformativeProtocol:
         
         # Place images on canvas with proper spacing
         placed_positions = []
-        max_height = 250  # Max height for images (preserves aspect ratio)
+        max_height = 500  # Max height for images (2x bigger, preserves aspect ratio)
         
         for img_data in loaded_images:
             img = img_data['image']
@@ -736,9 +751,9 @@ class PerformativeProtocol:
             y_velocity = random.uniform(-2, 2)
             
             # Resize image maintaining aspect ratio
-            # Scale down matcha and cat images for better quality
+            # Scale matcha and cat images
             if img_type in ['matcha', 'cat']:
-                new_height = 180  # Smaller size for matcha and cats
+                new_height = 360  # 2x bigger size for matcha and cats
             else:
                 new_height = max_height
             
@@ -746,20 +761,41 @@ class PerformativeProtocol:
             new_width = int(new_height * aspect_ratio)
             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
+            # Convert to RGBA to ensure proper transparency handling
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            
+            # Store the resized image before color adjustment
+            resized_img = img.copy()
+            
+            # Make matcha-removebg-preview(1).png less green
+            if img_type == 'matcha' and 'matcha-removebg-preview(1)' in filename:
+                # Reduce green channel by 10% (less aggressive degreening)
+                pixels = resized_img.load()
+                width, height = resized_img.size
+                for y_pos in range(height):
+                    for x_pos in range(width):
+                        r, g, b, a = pixels[x_pos, y_pos]
+                        # Reduce green channel by 10%
+                        g = int(g * 0.9)
+                        pixels[x_pos, y_pos] = (r, g, b, a)
+            
             # Random rotation (±8 degrees)
             angle = random.uniform(-8, 8)
-            img = img.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+            # Rotate with transparent fill - this prevents green/colored borders
+            rotated_img = resized_img.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(0, 0, 0, 0))
             
             # Convert to PhotoImage
-            photo = ImageTk.PhotoImage(img)
+            photo = ImageTk.PhotoImage(rotated_img)
             
             # Place on canvas
             item_id = self.canvas.create_image(x, y, image=photo, anchor='center')
             
             # Store reference to prevent garbage collection
+            # Store the color-adjusted resized image as 'original_img' so shake animation uses it
             self.images.append({
                 'photo': photo,
-                'original_img': img_data['image'],
+                'original_img': resized_img,  # Store the color-adjusted version
                 'item_id': item_id,
                 'type': img_type,
                 'angle': angle,
@@ -851,26 +887,17 @@ class PerformativeProtocol:
         self.music_loop_active = False
         self._stop_music()
         
-        # Close overlay window
+        # Close overlay window only (don't close the main GUI)
         if self.overlay_window:
             self.overlay_window.grab_release()
-            
-            # Get the root window before destroying overlay
-            root = self.overlay_window.master
-            
             self.overlay_window.destroy()
             self.overlay_window = None
-        
-        # Close the root window and quit the application
-        if root:
-            root.quit()
-            root.destroy()
         
         # Clear images
         self.images = []
         self.matcha_clicks = 0
         
-        print("Overlay dismissed! App closing...")
+        print("Overlay dismissed! Returning to monitoring...")
 
 
 # Helper functions for integration with other modules
@@ -888,32 +915,24 @@ def launch_performative_protocol(reason: str, productivity_score: float) -> bool
     Returns:
         True if protocol completed successfully, False otherwise
     """
-    import tkinter as tk
-    
     try:
-        # Create root window
-        root = tk.Tk()
-        root.withdraw()
-        
         print(f"\nLaunching Performative Protocol...")
         print(f"  Reason: {reason}")
         print(f"  Score: {productivity_score:.2f}")
         
         # Create and activate protocol
+        # The Toplevel window will use the existing tkinter event loop
         protocol = PerformativeProtocol()
         protocol.activate()
-        
-        # Start event loop
-        root.mainloop()
         
         return True
     except Exception as e:
         print(f"❌ Failed to launch protocol: {e}")
         return False
 
-
 def stop_protocol():
     """Stop any running protocol overlay."""
     # The protocol auto-stops when dismissed via matcha clicks
     # This is kept for compatibility with other modules
     pass
+

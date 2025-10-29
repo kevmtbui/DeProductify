@@ -256,7 +256,6 @@ class KeyboardTracker:
         
         return min(score, 1.0)
 
-
 # Convenience function for testing
 def test_keyboard_tracking(duration: float = 30.0):
     """
@@ -314,4 +313,5 @@ if __name__ == "__main__":
     # Test keyboard tracking
     print("DeProductify - Keyboard Activity Tracking Test\n")
     test_keyboard_tracking(duration=30)
+
 
