@@ -11,6 +11,14 @@ import pytesseract
 import mss
 from PIL import Image
 
+# Optional Gemini integration for semantic fallback
+try:
+    from modules.ai_integration import GeminiClassifier
+    GEMINI_AVAILABLE = True
+except (ImportError, ValueError):
+    GEMINI_AVAILABLE = False
+    GeminiClassifier = None
+
 
 class ProductivityDetector:
     """
@@ -26,30 +34,45 @@ class ProductivityDetector:
     - Productivity score computation
     """
     
-    def __init__(self):
-        """Initialize the productivity detector."""
+    def __init__(self, use_gemini_fallback: bool = True, gemini_api_key: Optional[str] = None):
+        """
+        Initialize the productivity detector.
+        
+        Args:
+            use_gemini_fallback: Whether to use Gemini AI as fallback when heuristics find nothing
+            gemini_api_key: Optional Gemini API key (defaults to GEMINI_API_KEY env var)
+        """
         self.screen_capturer = mss.mss()
         
         # Thresholds (configurable)
         self.text_density_threshold = 300  # words per frame
         self.brightness_threshold = 200  # 0-255 scale (bright white docs)
         self.work_keyword_threshold = 3  # minimum keywords to flag
+        self.gemini_fallback_threshold = 0.2  # Use Gemini if score < this
+        
+        # Gemini integration (optional)
+        self.use_gemini_fallback = use_gemini_fallback and GEMINI_AVAILABLE
+        self.gemini_classifier = None
+        
+        if self.use_gemini_fallback:
+            try:
+                self.gemini_classifier = GeminiClassifier(api_key=gemini_api_key)
+            except (ValueError, Exception) as e:
+                print(f"Warning: Gemini classifier not available: {e}")
+                self.use_gemini_fallback = False
         
         # Work-related keywords
         self.work_keywords = [
             # Coding
-            'import', 'def', 'function', 'class', 'return', 'const', 'var', 'let',
-            'async', 'await', 'module', 'package', 'interface', 'type',
+            'import', 'def', 'function', 'class', 'return', 'const', 'var', 'let', 'async', 'await', 'module', 'package', 'interface', 'type',
             # Academic
-            'report', 'essay', 'thesis', 'chapter', 'section', 'paragraph',
-            'assignment', 'homework', 'project', 'dissertation',
+            'report', 'essay', 'thesis', 'chapter', 'section', 'paragraph', 'assignment', 'homework', 'project', 'dissertation',
             # Documents
             'document', 'draft', 'revision', 'editing', 'review',
             # Academic content
             'lecture', 'exam', 'quiz', 'study', 'notes', 'summary',
             # General work
-            'meeting', 'agenda', 'task', 'todo', 'deadline', 'due date',
-            'presentation', 'slides', 'deck'
+            'meeting', 'agenda', 'task', 'todo', 'deadline', 'due date', 'presentation', 'slides', 'deck'
         ]
         
         # Lecture indicators
@@ -59,13 +82,12 @@ class ProductivityDetector:
         ]
         
         # Mathematical notation patterns
-        self.math_symbols = ['∫', 'Σ', '∑', 'θ', 'α', 'β', 'γ', 'Δ', 'δ', 'π', '∞', '√', '≤', '≥', '≠', '≈']
-        self.math_keywords = ['proof', 'theorem', 'equation', 'formula', 'derivative', 
-                            'integral', 'matrix', 'vector', 'calculus', 'algebra']
+        self.math_symbols = ['∫', 'Σ', '∑', 'θ', 'β', 'Δ', 'δ', 'π', '∞', '√', '≤', '≥', '≠', '≈']
+        self.math_keywords = ['proof', 'theorem', 'equation', 'formula', 'derivative', 'integral', 'matrix', 'vector', 'calculus', 'algebra', 'jacobian', 'wronskian', 'laplace', 'fourier', 'stokes\'s theorem']
         
     def capture_screen(self) -> Optional[np.ndarray]:
         """
-        Capture the current screen as a numpy array.
+        Capture the current screen as a numpy arraS y.
         
         Returns:
             numpy array of screen image (BGR format) or None if capture fails
@@ -363,12 +385,62 @@ class ProductivityDetector:
         
         results['productivity_score'] = productivity_score
         results['triggers_activated'] = triggers_activated
+        results['gemini_used'] = False
+        results['gemini_classification'] = None
+        
+        # Gemini fallback: If no triggers detected or very low score, use AI
+        if self.use_gemini_fallback and self.gemini_classifier:
+            # Use Gemini if:
+            # - No triggers activated (triggers_activated == 0)
+            # - OR score is below threshold (productivity_score < gemini_fallback_threshold)
+            # - AND we have OCR text to analyze
+            if (triggers_activated == 0 or productivity_score < self.gemini_fallback_threshold) and ocr_text:
+                try:
+                    # Get app name from window if available (optional, can be empty)
+                    app_name = ""  # Will be filled if tracking module provides it
+                    window_title = ""  # Same
+                    
+                    # Call Gemini with OCR text
+                    gemini_result = self.gemini_classifier.classify_productivity(
+                        app_name=app_name or "Unknown",
+                        window_title=window_title or "Screen Content",
+                        ocr_text_snippet=ocr_text[:1000],  # Limit to first 1000 chars
+                        force_refresh=False
+                    )
+                    
+                    results['gemini_used'] = True
+                    results['gemini_classification'] = gemini_result
+                    
+                    # If Gemini confidently says it's productive, boost the score
+                    if gemini_result.get('is_productive', False):
+                        confidence = gemini_result.get('confidence', 'unsure')
+                        
+                        if confidence == 'confident':
+                            # Strong AI signal - add significant points
+                            productivity_score = min(productivity_score + 0.4, 1.0)
+                            triggers_activated += 1
+                            results['gemini_confidence_boost'] = 0.4
+                        else:
+                            # Unsure but says productive - add smaller boost
+                            productivity_score = min(productivity_score + 0.2, 1.0)
+                            results['gemini_confidence_boost'] = 0.2
+                        
+                        results['productivity_score'] = productivity_score
+                        results['triggers_activated'] = triggers_activated
+                        
+                except Exception as e:
+                    # Silently fail - continue with heuristic score only
+                    results['gemini_error'] = str(e)
         
         return results
     
-    def analyze_screen(self) -> Dict:
+    def analyze_screen(self, app_name: str = "", window_title: str = "") -> Dict:
         """
         Capture current screen and analyze for productivity.
+        
+        Args:
+            app_name: Optional active app name (for Gemini context)
+            window_title: Optional window title (for Gemini context)
         
         Returns:
             Dictionary with detection results
@@ -382,8 +454,40 @@ class ProductivityDetector:
                 'productivity_score': 0.0
             }
         
-        # Analyze
-        return self.compute_visual_score(image)
+        # Analyze with visual heuristics
+        results = self.compute_visual_score(image)
+        
+        # If Gemini is available and we got no triggers, enhance with app context
+        if (self.use_gemini_fallback and 
+            self.gemini_classifier and 
+            app_name and 
+            results.get('triggers_activated', 0) == 0):
+            
+            # Re-run with app context if needed
+            ocr_text = self.extract_text(image)
+            if ocr_text:
+                try:
+                    gemini_result = self.gemini_classifier.classify_productivity(
+                        app_name=app_name,
+                        window_title=window_title or "",
+                        ocr_text_snippet=ocr_text[:1000],
+                        force_refresh=False
+                    )
+                    
+                    if gemini_result.get('is_productive', False):
+                        confidence = gemini_result.get('confidence', 'unsure')
+                        if confidence == 'confident':
+                            results['productivity_score'] = min(results['productivity_score'] + 0.4, 1.0)
+                        else:
+                            results['productivity_score'] = min(results['productivity_score'] + 0.2, 1.0)
+                        
+                        results['gemini_used'] = True
+                        results['gemini_classification'] = gemini_result
+                        results['triggers_activated'] += 1
+                except Exception:
+                    pass  # Silently fail
+        
+        return results
 
 
 # Convenience function for quick testing
@@ -400,6 +504,16 @@ def test_detection():
     print(f"Math Notation: {'DETECTED' if results.get('math_detected') else 'Not detected'}")
     print(f"\nProductivity Score: {results.get('productivity_score', 0.0):.2f}")
     print(f"Triggers Activated: {results.get('triggers_activated', 0)}")
+    
+    # Show Gemini results if used
+    if results.get('gemini_used'):
+        gemini_result = results.get('gemini_classification', {})
+        print(f"\n[Gemini Fallback Used]")
+        print(f"  Is Productive: {gemini_result.get('is_productive', False)}")
+        print(f"  Confidence: {gemini_result.get('confidence', 'unsure')}")
+        print(f"  Reasoning: {gemini_result.get('reasoning', 'N/A')}")
+        if 'gemini_confidence_boost' in results:
+            print(f"  Score Boost: +{results['gemini_confidence_boost']}")
     
     return results
 
