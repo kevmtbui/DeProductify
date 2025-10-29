@@ -13,6 +13,7 @@ import subprocess
 import sys
 import platform
 import json
+import psutil
 from typing import List
 
 class PerformativeProtocol:
@@ -486,9 +487,125 @@ class PerformativeProtocol:
             print("3 matcha clicks! Dismissing overlay...")
             self.dismiss()
     
+    def _close_all_apps(self):
+        """Close all applications except DeProductify and essential system apps"""
+        print("\nClosing all applications except DeProductify...")
+        
+        # List of apps/processes to keep running (besides DeProductify)
+        keep_running = {
+            # System processes (macOS)
+            'Finder', 'SystemUIServer', 'Dock', 'WindowServer', 'loginwindow',
+            'kernel_task', 'launchd', 'UserEventAgent', 'coreaudiod',
+            # System processes (Windows)
+            'explorer.exe', 'dwm.exe', 'csrss.exe', 'services.exe', 'winlogon.exe',
+            'lsass.exe', 'smss.exe', 'svchost.exe', 'System', 'Registry',
+            # System processes (Linux)
+            'systemd', 'init', 'gnome-shell', 'plasma-desktop', 'xfce4-panel',
+            'kwin_x11', 'Xorg', 'gdm', 'lightdm',
+            # Terminal/shells (keep user's terminal open)
+            'Terminal', 'iTerm2', 'Alacritty', 'cmd.exe', 'powershell.exe',
+            'gnome-terminal', 'konsole', 'xterm',
+            # Python/DeProductify processes
+            'python', 'python3', 'Python',
+        }
+        
+        closed_count = 0
+        system_type = platform.system()
+        
+        try:
+            if system_type == 'Darwin':  # macOS
+                # Get list of running applications
+                script = 'tell application "System Events" to get name of every process whose background only is false'
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if result.returncode == 0:
+                    apps = result.stdout.strip().split(', ')
+                    
+                    for app in apps:
+                        # Skip if in keep_running list or if it's a system app
+                        if app in keep_running or 'System' in app or 'Python' in app:
+                            continue
+                        
+                        try:
+                            # Quit the application
+                            quit_script = f'tell application "{app}" to quit'
+                            subprocess.run(
+                                ['osascript', '-e', quit_script],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                timeout=2
+                            )
+                            print(f"  Closed: {app}")
+                            closed_count += 1
+                        except Exception:
+                            pass  # Ignore errors for individual apps
+            
+            elif system_type == 'Windows':
+                # Use psutil to get processes on Windows
+                for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                    try:
+                        proc_name = proc.info['name']
+                        
+                        # Skip system processes and DeProductify
+                        if proc_name in keep_running or proc_name.lower().startswith(('system', 'windows', 'microsoft')):
+                            continue
+                        
+                        # Skip if it's a console/background process
+                        if proc.info['exe'] and 'Windows' in proc.info['exe']:
+                            continue
+                        
+                        # Check if it has a window (GUI app)
+                        try:
+                            if proc.num_threads() > 0:
+                                proc.terminate()
+                                proc.wait(timeout=2)
+                                print(f"  Closed: {proc_name}")
+                                closed_count += 1
+                        except psutil.NoSuchProcess:
+                            pass
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            
+            else:  # Linux
+                # Use psutil for Linux as well
+                for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                    try:
+                        proc_name = proc.info['name']
+                        
+                        # Skip system processes and DeProductify
+                        if proc_name in keep_running or proc_name.startswith(('gvfs', 'dbus', 'systemd')):
+                            continue
+                        
+                        # Only close GUI applications (those with DISPLAY)
+                        try:
+                            if proc.environ().get('DISPLAY'):
+                                proc.terminate()
+                                proc.wait(timeout=2)
+                                print(f"  Closed: {proc_name}")
+                                closed_count += 1
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError):
+                            pass
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            
+            print(f"Closed {closed_count} applications")
+            
+        except Exception as e:
+            print(f"Warning: Could not close all apps: {e}")
+    
     def activate(self):
         """Launch the performative protocol overlay"""
         print("\nActivating Performative Protocol...")
+        
+        # Close all other applications first
+        self._close_all_apps()
+        
+        # Give a moment for apps to close
+        time.sleep(0.5)
         
         # Create fullscreen overlay window
         self.overlay_window = tk.Toplevel()
