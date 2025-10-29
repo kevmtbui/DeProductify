@@ -35,6 +35,7 @@ class PerformativeProtocol:
         self.audio_process = None
         self.using_pygame = False
         self.shake_sound = None
+        self.music_loop_active = False  # Track if music looping is active
         
         # Try to initialize pygame for audio (works better on Windows)
         try:
@@ -347,11 +348,12 @@ class PerformativeProtocol:
     
     def _stop_music(self):
         """Stop the currently playing music"""
+        self.music_loop_active = False  # Stop the music loop
         try:
             if self.using_pygame:
                 import pygame
                 pygame.mixer.music.stop()
-                print("⏹️ Music stopped (pygame)")
+                print("Music stopped (pygame)")
             elif self.audio_process and self.audio_process.poll() is None:
                 # Process is still running, terminate it
                 self.audio_process.terminate()
@@ -749,8 +751,12 @@ class PerformativeProtocol:
                     lambda e, iid=item_id, idx=len(self.images)-1: self._on_matcha_click(e, iid, idx, self.canvas)
                 )
         
-        # Play music
+        # Play music and enable looping
+        self.music_loop_active = True
         self._play_music()
+        
+        # Start checking for music end (to auto-play next song)
+        self.overlay_window.after(2000, self._check_and_loop_music)
         
         # Start animation loop
         self.animation_running = True
@@ -814,7 +820,8 @@ class PerformativeProtocol:
         # Stop animation
         self.animation_running = False
         
-        # Stop music
+        # Stop music loop and playback
+        self.music_loop_active = False
         self._stop_music()
         
         # Close overlay window
