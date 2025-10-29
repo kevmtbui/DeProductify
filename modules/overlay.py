@@ -358,10 +358,37 @@ class PerformativeProtocol:
                 # Process is still running, terminate it
                 self.audio_process.terminate()
                 self.audio_process.wait(timeout=2)
-                print("⏹️ Music stopped (subprocess)")
+                print("Music stopped (subprocess)")
                 self.audio_process = None
         except Exception as e:
-            print(f"❌ Failed to stop music: {e}")
+            print(f"Failed to stop music: {e}")
+    
+    def _is_music_playing(self):
+        """Check if music is currently playing"""
+        try:
+            if self.using_pygame:
+                import pygame
+                return pygame.mixer.music.get_busy()
+            else:
+                # For subprocess-based playback, check if process is running
+                if self.audio_process and self.audio_process.poll() is None:
+                    return True
+                return False
+        except Exception:
+            return False
+    
+    def _check_and_loop_music(self):
+        """Check if music has stopped and play a new song if needed"""
+        if not self.music_loop_active:
+            return  # Stop checking if loop is disabled
+        
+        if not self._is_music_playing():
+            print("\nSong ended, playing next track...")
+            self._play_music()
+        
+        # Check again in 2 seconds
+        if self.overlay_window:
+            self.overlay_window.after(2000, self._check_and_loop_music)
     
     def _check_overlap(self, x, y, placed_positions, margin=350):
         """Check if a position overlaps with any placed images"""
