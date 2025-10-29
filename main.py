@@ -1,36 +1,305 @@
 """
 DeProductify - Main orchestrator
 Detects productivity and triggers Performative Protocol
+
+Combines all detection modules:
+- Detection (OCR + Visual Heuristics)
+- Tracking (Window + Focus)
+- Behavioral (Keyboard Activity)
+- AI Integration (Gemini fallback)
 """
+
+import time
+from typing import Dict, Optional, Tuple
 from modules.detection import ProductivityDetector
 from modules.tracking import WindowTracker
+from modules.behavioral import KeyboardTracker
+
+# Placeholder for overlay module (will be implemented by friend)
+def trigger_performative_protocol(reason: str, productivity_score: float):
+    """
+    Trigger the Performative Protocol overlay.
+    
+    When overlay.py is ready, this will display:
+    - Matcha clickable overlay (user must click to dismiss)
+    - Random indie music (Laufey, Clairo, Daniel Caesar, beabadoobee)
+    - Aesthetic items (vinyls, totebag, labubu, books)
+    
+    Args:
+        reason: Why the protocol was triggered
+        productivity_score: Combined productivity score that triggered it
+    """
+    # Try to use overlay module if available
+    try:
+        from modules.overlay import launch_performative_protocol
+        # When overlay.py is fully implemented, this will launch it
+        launch_performative_protocol(reason, productivity_score)
+    except (ImportError, NotImplementedError):
+        # Fallback placeholder until overlay is ready
+        print("\n" + "="*60)
+        print("PERFORMATIVE PROTOCOL™ ACTIVATED")
+        print("="*60)
+        print(f"Reason: {reason}")
+        print(f"Productivity Score: {productivity_score:.2f}")
+        print("\n[PLACEHOLDER] Overlay module will display:")
+        print("  - Matcha clickable button (must click to dismiss)")
+        print("  - Random music playback (indie playlist)")
+        print("  - Aesthetic overlay elements")
+        print("="*60 + "\n")
+
+
+class DeProductifyOrchestrator:
+    """
+    Main orchestrator that combines all detection modules
+    and decides when to trigger the Performative Protocol.
+    """
+    
+    def __init__(self, 
+                 productivity_threshold: float = 0.5,
+                 check_interval: float = 2.0,
+                 use_keyboard_tracking: bool = True,
+                 cooldown_seconds: float = 120.0):
+        """
+        Initialize the orchestrator.
+        
+        Args:
+            productivity_threshold: Combined score threshold to trigger protocol (0.0-1.0)
+            check_interval: Seconds between productivity checks
+            use_keyboard_tracking: Whether to track keyboard activity
+            cooldown_seconds: Seconds to wait after triggering before checking again
+        """
+        self.productivity_threshold = productivity_threshold
+        self.check_interval = check_interval
+        self.cooldown_seconds = cooldown_seconds
+        
+        # Initialize all detection modules
+        print("Initializing detection modules...")
+        
+        # OCR + Visual Detection
+        self.detector = ProductivityDetector(use_gemini_fallback=True)
+        print("  ✓ Detection module ready")
+        
+        # Window Tracking
+        self.tracker = WindowTracker()
+        print("  ✓ Window tracking ready")
+        
+        # Keyboard Tracking (optional)
+        self.keyboard_tracker = None
+        if use_keyboard_tracking:
+            try:
+                self.keyboard_tracker = KeyboardTracker()
+                self.keyboard_tracker.start_monitoring()
+                print("  ✓ Keyboard tracking ready")
+            except Exception as e:
+                print(f"  ⚠ Keyboard tracking unavailable: {e}")
+        
+        # State tracking
+        self.last_trigger_time = 0
+        self.is_in_cooldown = False
+        self.monitoring = False
+        
+        print("\nDeProductify ready! Monitoring your productivity...\n")
+    
+    def get_combined_productivity_score(self) -> Dict:
+        """
+        Aggregate scores from all detection modules.
+        
+        Returns:
+            Dictionary with:
+            - combined_score: Total productivity score (0.0-1.0)
+            - detection_score: OCR/visual detection score
+            - tracking_score: Window tracking score
+            - keyboard_score: Keyboard activity score
+            - triggers: List of active triggers
+            - reason: Human-readable reason for score
+        """
+        results = {
+            'combined_score': 0.0,
+            'detection_score': 0.0,
+            'tracking_score': 0.0,
+            'keyboard_score': 0.0,
+            'triggers': [],
+            'reason': ''
+        }
+        
+        # 1. Detection Module (OCR + Visual) - Weight: 40%
+        try:
+            # Get window info for better context
+            window_info = self.tracker.get_active_window()
+            app_name = window_info.get('app_name', '') if window_info else ''
+            window_title = window_info.get('window_title', '') if window_info else ''
+            
+            detection_results = self.detector.analyze_screen(
+                app_name=app_name,
+                window_title=window_title
+            )
+            
+            detection_score = detection_results.get('productivity_score', 0.0)
+            results['detection_score'] = detection_score
+            results['detection_details'] = detection_results
+            
+            if detection_score > 0:
+                triggers_count = detection_results.get('triggers_activated', 0)
+                if triggers_count > 0:
+                    results['triggers'].append(f"Visual detection: {triggers_count} triggers")
+                    if detection_results.get('gemini_used'):
+                        results['triggers'].append("AI (Gemini) detected productivity")
+        
+        except Exception as e:
+            print(f"Warning: Detection module error: {e}")
+        
+        # 2. Tracking Module (Window Focus) - Weight: 40%
+        try:
+            should_trigger, reason = self.tracker.should_trigger_protocol(
+                require_focus_duration=True
+            )
+            
+            if should_trigger:
+                tracking_score = 0.8  # High score if window tracking says productive
+                focus_info = self.tracker.track_window_focus()
+                focus_duration = focus_info.get('focus_duration', 0)
+                app_name = focus_info.get('current_window', {}).get('app_name', 'Unknown')
+                
+                results['tracking_score'] = tracking_score
+                results['triggers'].append(f"Active app focus: {app_name} ({focus_duration:.0f}s)")
+            else:
+                # Calculate partial score based on focus duration
+                focus_info = self.tracker.track_window_focus()
+                focus_duration = focus_info.get('focus_duration', 0)
+                focus_duration_min = focus_info.get('focus_duration_minutes', 0)
+                
+                # Scale from 0-0.6 based on focus duration (max at 5 minutes)
+                if focus_duration > 0:
+                    tracking_score = min(focus_duration_min / 5.0 * 0.6, 0.6)
+                    results['tracking_score'] = tracking_score
+                    
+                    if focus_duration_min > 1:
+                        results['triggers'].append(f"Focus duration: {focus_duration_min:.1f} min")
+        
+        except Exception as e:
+            print(f"Warning: Tracking module error: {e}")
+        
+        # 3. Keyboard Tracking Module - Weight: 20%
+        try:
+            if self.keyboard_tracker:
+                keyboard_stats = self.keyboard_tracker.get_typing_statistics()
+                keyboard_score = self.keyboard_tracker.get_activity_score()
+                
+                results['keyboard_score'] = keyboard_score
+                
+                if keyboard_score > 0:
+                    is_productive, kb_reason = self.keyboard_tracker.detect_productive_typing()
+                    if is_productive:
+                        results['triggers'].append(f"Keyboard: {kb_reason}")
+        
+        except Exception as e:
+            print(f"Warning: Keyboard tracking error: {e}")
+        
+        # Combine scores (weighted average)
+        # Detection: 40%, Tracking: 40%, Keyboard: 20%
+        combined_score = (
+            results['detection_score'] * 0.4 +
+            results['tracking_score'] * 0.4 +
+            results['keyboard_score'] * 0.2
+        )
+        
+        # Cap at 1.0
+        results['combined_score'] = min(combined_score, 1.0)
+        
+        # Build reason string
+        if results['triggers']:
+            results['reason'] = " | ".join(results['triggers'])
+        else:
+            results['reason'] = "No productivity indicators detected"
+        
+        return results
+    
+    def should_trigger_protocol(self) -> Tuple[bool, str, float]:
+        """
+        Determine if Performative Protocol should be triggered.
+        
+        Returns:
+            Tuple of (should_trigger, reason, productivity_score)
+        """
+        # Check cooldown
+        current_time = time.time()
+        if self.is_in_cooldown:
+            time_remaining = self.cooldown_seconds - (current_time - self.last_trigger_time)
+            if time_remaining > 0:
+                return False, f"Cooldown active ({time_remaining:.0f}s remaining)", 0.0
+            else:
+                self.is_in_cooldown = False
+        
+        # Get combined productivity score
+        productivity_data = self.get_combined_productivity_score()
+        combined_score = productivity_data['combined_score']
+        
+        # Check threshold
+        if combined_score >= self.productivity_threshold:
+            reason = f"Productivity detected: {productivity_data['reason']}"
+            return True, reason, combined_score
+        
+        return False, productivity_data['reason'], combined_score
+    
+    def start_monitoring(self):
+        """Start continuous productivity monitoring loop."""
+        self.monitoring = True
+        print(f"Monitoring started (threshold: {self.productivity_threshold}, interval: {self.check_interval}s)")
+        print("Press Ctrl+C to stop\n")
+        
+        try:
+            while self.monitoring:
+                # Check if we should trigger
+                should_trigger, reason, score = self.should_trigger_protocol()
+                
+                # Print status
+                print(f"[{time.strftime('%H:%M:%S')}] Productivity Score: {score:.2f} | {reason[:60]}")
+                
+                if should_trigger:
+                    # Trigger the Performative Protocol
+                    self.last_trigger_time = time.time()
+                    self.is_in_cooldown = True
+                    
+                    trigger_performative_protocol(reason, score)
+                    
+                    print(f"Cooldown active for {self.cooldown_seconds} seconds...")
+                
+                # Wait before next check
+                time.sleep(self.check_interval)
+        
+        except KeyboardInterrupt:
+            print("\n\nMonitoring stopped by user")
+        finally:
+            self.stop_monitoring()
+    
+    def stop_monitoring(self):
+        """Stop monitoring and clean up."""
+        self.monitoring = False
+        
+        if self.keyboard_tracker:
+            self.keyboard_tracker.stop_monitoring()
+        
+        print("DeProductify stopped.")
+
 
 def main():
-    print("DeProductify starting...\n")
+    """Main entry point."""
+    print("="*60)
+    print("DeProductify")
+    print("Detects when you're working too hard — and makes it look like you're not.")
+    print("="*60 + "\n")
     
-    # Initialize productivity detector (OCR + Visual Heuristics)
-    detector = ProductivityDetector()
+    # Create orchestrator with custom settings
+    orchestrator = DeProductifyOrchestrator(
+        productivity_threshold=0.5,      # Trigger at 50% productivity
+        check_interval=3.0,              # Check every 3 seconds
+        use_keyboard_tracking=True,      # Enable keyboard tracking
+        cooldown_seconds=120.0          # 2 minute cooldown after triggering
+    )
     
-    print("Testing OCR and visual detection...")
-    print("Make sure you have a document/IDE open on your screen!\n")
-    
-    # Analyze current screen
-    results = detector.analyze_screen()
-    
-    if 'error' in results:
-        print(f"{results['error']}")
-        return
-    
-    # Print results
-    print("\n=== Detection Results ===")
-    print(f"Productivity Score: {results['productivity_score']:.2f}")
-    print(f"Triggers Activated: {results['triggers_activated']}")
-    print(f"\nDetails:")
-    print(f"  - Brightness: {results['brightness']:.1f} {'(BRIGHT DOC)' if results['bright_document'] else ''}")
-    print(f"  - Text Density: {results['text_density']} words")
-    print(f"  - Work Keywords: {results['work_keyword_count']} found")
-    print(f"  - Lecture Content: {'Yes' if results['lecture_detected'] else 'No'}")
-    print(f"  - Math Notation: {'Yes' if results['math_detected'] else 'No'}")
+    # Start monitoring
+    orchestrator.start_monitoring()
+
 
 if __name__ == "__main__":
     main()
