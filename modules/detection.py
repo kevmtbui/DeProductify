@@ -31,7 +31,7 @@ class ProductivityDetector:
         self.screen_capturer = mss.mss()
         
         # Thresholds (configurable)
-        self.text_density_threshold = 50  # words per frame
+        self.text_density_threshold = 300  # words per frame
         self.brightness_threshold = 200  # 0-255 scale (bright white docs)
         self.work_keyword_threshold = 3  # minimum keywords to flag
         
