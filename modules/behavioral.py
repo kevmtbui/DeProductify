@@ -30,7 +30,7 @@ class KeyboardTracker:
     """
     
     def __init__(self, 
-                 steady_typing_threshold: float = 30.0,  # seconds of steady typing
+                 steady_typing_threshold: float = 15.0,  # seconds of steady typing
                  keypress_rate_threshold: float = 2.0,  # keys per second for "steady"
                  word_detection_threshold: int = 5):  # minimum keypresses to consider a word
         """
@@ -223,11 +223,6 @@ class KeyboardTracker:
         # Check for many total keypresses (lots of words typed)
         if stats['word_estimate'] >= 100:  # ~100+ words typed
             return True, f"Many words typed: ~{stats['word_estimate']} words"
-        
-        # Check if typing steadily but not long enough yet
-        if (stats['keys_per_second'] >= self.keypress_rate_threshold and 
-            stats['current_typing_duration'] >= self.steady_typing_threshold / 2):
-            return True, f"Active typing: {stats['current_typing_duration']:.1f}s at {stats['keys_per_second']:.1f} keys/sec"
         
         return False, "No productive typing pattern detected"
     
