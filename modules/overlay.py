@@ -40,9 +40,9 @@ class PerformativeProtocol:
             import pygame
             pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
             self.using_pygame = True
-            print("✅ Pygame audio initialized")
+            print("Pygame audio initialized")
         except Exception as e:
-            print(f"⚠️  Pygame audio not available, using system commands: {e}")
+            print(f"Warning: Pygame audio not available, using system commands: {e}")
             self.using_pygame = False
         
         # Load shake sound effect (works with or without pygame)
@@ -54,14 +54,14 @@ class PerformativeProtocol:
         sfx_files = glob.glob(os.path.join(sfx_dir, '*.mp3'))
         
         if not sfx_files:
-            print("⚠️  No shake sound effect found in assets/sfx/")
+            print("Warning: No shake sound effect found in assets/sfx/")
             print("   Add a shake sound MP3 to enable sound effects!")
             return
         
         # Check if file is valid (not empty)
         sound_file = sfx_files[0]
         if os.path.getsize(sound_file) == 0:
-            print(f"⚠️  Shake sound file is empty: {os.path.basename(sound_file)}")
+            print(f"Warning: Shake sound file is empty: {os.path.basename(sound_file)}")
             print("   Please download a valid shake sound effect MP3")
             return
         
@@ -75,19 +75,19 @@ class PerformativeProtocol:
                 if processed_file and os.path.exists(processed_file):
                     # Load the processed version
                     self.shake_sound = pygame.mixer.Sound(processed_file)
-                    print(f"🔊 Loaded shake sound: {os.path.basename(sound_file)} (2x speed, louder)")
+                    print(f"Loaded shake sound: {os.path.basename(sound_file)} (2x speed, louder)")
                 else:
                     # Load original and increase volume
                     self.shake_sound = pygame.mixer.Sound(sound_file)
-                    print(f"🔊 Loaded shake sound: {os.path.basename(sound_file)} (louder)")
+                    print(f"Loaded shake sound: {os.path.basename(sound_file)} (louder)")
                 
                 print(f"   Duration: {self.shake_sound.get_length():.2f}s")
             else:
                 # Store path for platform-specific playback
                 self.shake_sound = sound_file
-                print(f"🔊 Shake sound ready: {os.path.basename(sound_file)}")
+                print(f"Shake sound ready: {os.path.basename(sound_file)}")
         except Exception as e:
-            print(f"⚠️  Could not load shake sound: {e}")
+            print(f"Warning: Could not load shake sound: {e}")
             print(f"   File: {os.path.basename(sound_file)}")
             print(f"   Make sure it's a valid MP3 file")
     
@@ -120,15 +120,15 @@ class PerformativeProtocol:
             
             # Export as WAV for faster loading
             audio_loud.export(processed_file, format='wav')
-            print(f"✅ Processed sound saved: {os.path.basename(processed_file)}")
+            print(f"Processed sound saved: {os.path.basename(processed_file)}")
             
             return processed_file
             
         except ImportError:
-            print("⚠️  pydub not available - using original sound with higher volume")
+            print("Warning: pydub not available - using original sound with higher volume")
             return None
         except Exception as e:
-            print(f"⚠️  Could not process sound: {e}")
+            print(f"Warning: Could not process sound: {e}")
             return None
     
     def _play_shake_sound(self):
@@ -173,7 +173,7 @@ class PerformativeProtocol:
                     except FileNotFoundError:
                         pass
         except Exception as e:
-            print(f"⚠️  Could not play shake sound: {e}")
+            print(f"Warning: Could not play shake sound: {e}")
     
     def _load_scaled_positions(self, screen_width, screen_height):
         """Load positions from JSON file and scale to current screen dimensions"""
@@ -195,7 +195,7 @@ class PerformativeProtocol:
                 scale_x = screen_width / saved_width
                 scale_y = screen_height / saved_height
                 
-                print(f"📍 Scaling positions from {saved_width}x{saved_height} to {screen_width}x{screen_height}")
+                print(f"Scaling positions from {saved_width}x{saved_height} to {screen_width}x{screen_height}")
                 print(f"   Scale factors: X={scale_x:.2f}, Y={scale_y:.2f}")
                 
                 # Scale all positions
@@ -214,7 +214,7 @@ class PerformativeProtocol:
                 # Old format without screen dimensions
                 return data
         except Exception as e:
-            print(f"⚠️  Could not load positions: {e}")
+            print(f"Warning: Could not load positions: {e}")
             return None
     
     def _load_images(self):
@@ -267,7 +267,7 @@ class PerformativeProtocol:
                 except Exception as e:
                     print(f"Failed to load {filename}: {e}")
         
-        print(f"✅ Loaded {len(loaded_images)} images")
+        print(f"Loaded {len(loaded_images)} images")
         return loaded_images
     
     def _get_random_audio_file(self):
@@ -473,7 +473,7 @@ class PerformativeProtocol:
     def _on_matcha_click(self, event, item_id, img_index, canvas_obj):
         """Handle click on matcha image"""
         self.matcha_clicks += 1
-        print(f"🍵 Matcha click {self.matcha_clicks}/3")
+        print(f"Matcha click {self.matcha_clicks}/3")
         
         # Play shake sound effect
         self._play_shake_sound()
@@ -483,7 +483,7 @@ class PerformativeProtocol:
         
         # Dismiss after 3 clicks
         if self.matcha_clicks >= 3:
-            print("✅ 3 matcha clicks! Dismissing overlay...")
+            print("3 matcha clicks! Dismissing overlay...")
             self.dismiss()
     
     def activate(self):
@@ -554,7 +554,7 @@ class PerformativeProtocol:
                     x, y = pos_data['x'], pos_data['y']
                 else:
                     x, y = pos_data
-                print(f"📍 Using custom position for {filename}: ({x}, {y})")
+                print(f"Using custom position for {filename}: ({x}, {y})")
             else:
                 # Get non-overlapping position
                 x, y = self._get_random_position(self.screen_width, self.screen_height, placed_positions)
@@ -720,7 +720,7 @@ def launch_performative_protocol(reason: str, productivity_score: float) -> bool
         root = tk.Tk()
         root.withdraw()
         
-        print(f"\n🎭 Launching Performative Protocol...")
+        print(f"\nLaunching Performative Protocol...")
         print(f"  Reason: {reason}")
         print(f"  Score: {productivity_score:.2f}")
         
