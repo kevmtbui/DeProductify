@@ -488,16 +488,13 @@ class PerformativeProtocol:
     
     def activate(self):
         """Launch the performative protocol overlay"""
-        print("\n🎭 Activating Performative Protocol...")
+        print("\nActivating Performative Protocol...")
         
         # Create fullscreen overlay window
         self.overlay_window = tk.Toplevel()
         self.overlay_window.attributes('-fullscreen', True)
         self.overlay_window.attributes('-topmost', True)
         self.overlay_window.overrideredirect(True)
-        
-        # Set transparency (0.85 = 85% opaque)
-        self.overlay_window.attributes('-alpha', 0.85)
         
         # Get screen dimensions
         self.screen_width = self.overlay_window.winfo_screenwidth()
@@ -507,12 +504,29 @@ class PerformativeProtocol:
         if self.load_from_file and not self.custom_positions:
             self.custom_positions = self._load_scaled_positions(self.screen_width, self.screen_height)
         
-        # Create canvas with white background
+        # Make background fully transparent
+        # Use a unique color for transparency (bright green that won't appear in images)
+        transparency_color = '#00FF00'
+        
+        # Platform-specific transparency setup
+        try:
+            # macOS and some Linux systems support -transparentcolor
+            self.overlay_window.attributes('-transparentcolor', transparency_color)
+        except tk.TclError:
+            try:
+                # Windows alternative
+                self.overlay_window.wm_attributes('-transparentcolor', transparency_color)
+            except tk.TclError:
+                # Fallback: use alpha for semi-transparency if true transparency not supported
+                self.overlay_window.attributes('-alpha', 0.95)
+                transparency_color = self.bg_color
+        
+        # Create canvas with the transparency color as background
         self.canvas = Canvas(
             self.overlay_window,
             width=self.screen_width,
             height=self.screen_height,
-            bg=self.bg_color,
+            bg=transparency_color,
             highlightthickness=0
         )
         self.canvas.pack(fill='both', expand=True)
@@ -601,10 +615,10 @@ class PerformativeProtocol:
         self.animation_running = True
         self._animate_images()
         
-        print(f"✅ Overlay active with {len(loaded_images)} images")
-        print("🍵 Click the FIRST matcha (matcha-removebg-preview) 3 times to dismiss!")
+        print(f"Overlay active with {len(loaded_images)} images")
+        print("Click the FIRST matcha (matcha-removebg-preview) 3 times to dismiss!")
         print("   Note: matcha2 is just decoration, won't respond to clicks")
-        print("🎈 Images are floating and bouncing!")
+        print("Images are floating and bouncing!")
     
     def _animate_images(self):
         """Animate images to move around and bounce off walls"""
@@ -654,7 +668,7 @@ class PerformativeProtocol:
     
     def dismiss(self):
         """Dismiss the overlay and stop music"""
-        print("\n👋 Dismissing Performative Protocol...")
+        print("\nDismissing Performative Protocol...")
         
         # Stop animation
         self.animation_running = False
@@ -681,7 +695,7 @@ class PerformativeProtocol:
         self.images = []
         self.matcha_clicks = 0
         
-        print("✅ Overlay dismissed! App closing...")
+        print("Overlay dismissed! App closing...")
 
 
 # Helper functions for integration with other modules
