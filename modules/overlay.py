@@ -716,9 +716,6 @@ class PerformativeProtocol:
         )
         self.canvas.pack(fill='both', expand=True)
         
-        # Block all interactions except matcha clicks
-        self.overlay_window.grab_set()
-        
         # Load images
         loaded_images = self._load_images()
         
@@ -806,13 +803,16 @@ class PerformativeProtocol:
                 'size': (new_width, new_height)
             })
             
-            # Bind click event for ONLY the first matcha image (matcha-removebg-preview(1).png)
-            if img_type == 'matcha' and 'matcha-removebg-preview(1)' in filename:
+            # Bind click event for ALL matcha images to ensure dismissal works
+            if img_type == 'matcha':
+                # Raise to top to ensure it's clickable
+                self.canvas.tag_raise(item_id)
                 self.canvas.tag_bind(
                     item_id,
                     '<Button-1>',
                     lambda e, iid=item_id, idx=len(self.images)-1: self._on_matcha_click(e, iid, idx, self.canvas)
                 )
+                print(f"  ✓ Matcha clickable: {filename}")
         
         # Play music and enable looping
         self.music_loop_active = True

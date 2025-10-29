@@ -351,16 +351,24 @@ class DeProductifyOrchestrator:
         
         # Send notification if we crossed a new 0.1 threshold
         if current_threshold > self.last_warning_level and current_threshold >= 0.1:
-            # Generate message based on threshold
+            # Generate unique message for each threshold
             percentage = int(current_threshold * 100)
-            if percentage >= 40:
-                message = f"⚠️ Productivity at {percentage}% - Protocol imminent!"
-            elif percentage >= 30:
-                message = f"⚠️ Productivity rising: {percentage}%"
-            elif percentage >= 20:
-                message = f"Productivity detected: {percentage}%"
-            else:
-                message = f"Productivity level: {percentage}%"
+            
+            # Unique messages for each 10% threshold
+            messages = {
+                10: "I see you started working over there... 👀",
+                20: "Productivity detected - take it easy! ☕",
+                30: "⚠️ You're getting too productive...",
+                40: "⚠️ DANGER ZONE - Productivity rising! 🚨",
+                50: "🚨 CRITICAL - Protocol activation imminent!",
+                60: "❌ MAXIMUM PRODUCTIVITY - Protocol NOW!",
+                70: "💀 EXTREME OVERWORK DETECTED",
+                80: "🔴 SHUTDOWN REQUIRED IMMEDIATELY",
+                90: "⛔ BURNOUT PREVENTION ACTIVATED",
+                100: "🆘 EMERGENCY INTERVENTION"
+            }
+            
+            message = messages.get(percentage, f"Productivity level: {percentage}%")
             
             # Send notification
             self.send_notification("DeProductify Alert", message)
@@ -527,7 +535,7 @@ def main():
     
     # Create orchestrator with custom settings
     orchestrator = DeProductifyOrchestrator(
-        productivity_threshold=0.4,      # Trigger at 40% productivity (easier for demos)
+        productivity_threshold=0.3,     # Trigger at 45% productivity
         check_interval=0.5,              # Check every 0.5 seconds (faster updates)
         use_keyboard_tracking=True,      # Enable keyboard tracking
         cooldown_seconds=120.0          # 2 minute cooldown after triggering
