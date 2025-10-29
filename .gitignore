@@ -22,3 +22,9 @@ assets/images/*.png
 assets/images/*.jpg
 *.log
 
+# Gemini cache
+.gemini_cache/
+
+# Environment variables
+.env
+
