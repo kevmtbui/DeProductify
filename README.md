@@ -40,8 +40,8 @@ Instead of blocking productivity, DeProductify masks it with an online persona: 
 **Tools:** Gemini API
 
 ### 6. Performative Protocol Activation
-**Description:** Plays "performative" music (Laufey, Clairo, Daniel Caesar, beabadoobee) and overlays aesthetic items (matcha, labubu, vinyls, books)  
-**Tools:** `pygame`, `tkinter`, `webbrowser`, `pyautogui`
+**Description:** Plays "performative" music (Laufey, Clairo, beabadoobee) and overlays aesthetic items (matcha, cat, vinyls, totebag, earbuds)  
+**Tools:** `pygame`, `tkinter` (cross-platform audio playback)
 
 ---
 
@@ -80,9 +80,10 @@ DeProductify uses multiple detection methods across 4 modules to identify produc
 - **pyautogui** - System automation and input detection
 
 ### GUI & Visual Overlay
-- **pygame** - Audio playback and visual rendering
+- **pygame** - Audio playback (cross-platform)
+- **customtkinter** - Modern GUI framework
 - **tkinter** - GUI framework (built into Python)
-- **webbrowser** - Optional browser integration
+- Platform-specific audio fallbacks (afplay on macOS, PowerShell on Windows)
 
 ### AI Integration
 - **google-generativeai** - Gemini API client
@@ -175,8 +176,10 @@ When productivity is detected, DeProductify activates the Performative Protocol:
 - **Non-intrusive**: Overlays don't block user interaction
 
 ### Audio Elements
-- **Indie music playlist**: Laufey, Clairo, Daniel Caesar, beabadoobee
-- **Local playback**: Music files stored in `assets/audio/`
+- **Indie music playlist**: 16 local MP3 files featuring Laufey, Clairo, and beabadoobee
+- **Local playback**: Music files stored in `assets/audio/` (no internet required)
+- **Cross-platform**: Works on Windows, macOS, and Linux
+- **Auto-stop**: Music automatically stops when overlay is dismissed (3 matcha clicks)
 - **Ambient soundtrack**: Curated to match the "study playlist girlie" aesthetic
 
 ---
@@ -199,7 +202,9 @@ These can be adjusted later based on testing and user preferences.
 - This is a hackathon project, not a production application
 - Privacy: Screen capture may involve sensitive data
 - Performance: Screen monitoring runs in background threads to keep GUI responsive
-- Platform: macOS (with potential cross-platform support)
+- Platform: Cross-platform support for **Windows**, **macOS**, and **Linux**
+  - Audio playback uses pygame (primary) with platform-specific fallbacks
+  - Overlay works on all platforms via tkinter
 
 ---
 
