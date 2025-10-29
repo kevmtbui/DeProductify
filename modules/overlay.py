@@ -12,14 +12,20 @@ import time
 import subprocess
 import sys
 import platform
+import json
 from typing import List
 
 class PerformativeProtocol:
-    def __init__(self):
+    def __init__(self, custom_positions=None, load_from_file=False):
         self.overlay_window = None
         self.canvas = None
         self.images = []
         self.matcha_clicks = 0
+        self.custom_positions = custom_positions  # Dict of {filename: {x, y, ...}}
+        self.load_from_file = load_from_file
+        self.animation_running = False
+        self.screen_width = 0
+        self.screen_height = 0
         
         # Color palette
         self.bg_color = '#F5F1E8'  # clairo_linen (white background)
@@ -27,6 +33,7 @@ class PerformativeProtocol:
         # Audio playback
         self.audio_process = None
         self.using_pygame = False
+        self.shake_sound = None
         
         # Try to initialize pygame for audio (works better on Windows)
         try:
@@ -38,6 +45,178 @@ class PerformativeProtocol:
             print(f"⚠️  Pygame audio not available, using system commands: {e}")
             self.using_pygame = False
         
+        # Load shake sound effect (works with or without pygame)
+        self._load_shake_sound()
+        
+    def _load_shake_sound(self):
+        """Load the shake sound effect"""
+        sfx_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'sfx')
+        sfx_files = glob.glob(os.path.join(sfx_dir, '*.mp3'))
+        
+        if not sfx_files:
+            print("⚠️  No shake sound effect found in assets/sfx/")
+            print("   Add a shake sound MP3 to enable sound effects!")
+            return
+        
+        # Check if file is valid (not empty)
+        sound_file = sfx_files[0]
+        if os.path.getsize(sound_file) == 0:
+            print(f"⚠️  Shake sound file is empty: {os.path.basename(sound_file)}")
+            print("   Please download a valid shake sound effect MP3")
+            return
+        
+        try:
+            if self.using_pygame:
+                import pygame
+                
+                # Try to create a faster, louder version using pydub
+                processed_file = self._process_shake_sound(sound_file)
+                
+                if processed_file and os.path.exists(processed_file):
+                    # Load the processed version
+                    self.shake_sound = pygame.mixer.Sound(processed_file)
+                    print(f"🔊 Loaded shake sound: {os.path.basename(sound_file)} (2x speed, louder)")
+                else:
+                    # Load original and increase volume
+                    self.shake_sound = pygame.mixer.Sound(sound_file)
+                    print(f"🔊 Loaded shake sound: {os.path.basename(sound_file)} (louder)")
+                
+                print(f"   Duration: {self.shake_sound.get_length():.2f}s")
+            else:
+                # Store path for platform-specific playback
+                self.shake_sound = sound_file
+                print(f"🔊 Shake sound ready: {os.path.basename(sound_file)}")
+        except Exception as e:
+            print(f"⚠️  Could not load shake sound: {e}")
+            print(f"   File: {os.path.basename(sound_file)}")
+            print(f"   Make sure it's a valid MP3 file")
+    
+    def _process_shake_sound(self, sound_file):
+        """Process shake sound to be 2x faster and louder"""
+        try:
+            from pydub import AudioSegment
+            
+            # Create processed file path
+            sfx_dir = os.path.dirname(sound_file)
+            processed_file = os.path.join(sfx_dir, 'shake_processed.wav')
+            
+            # Check if already processed
+            if os.path.exists(processed_file):
+                return processed_file
+            
+            print("🎵 Processing shake sound (2x speed, +6dB louder)...")
+            
+            # Load the audio
+            audio = AudioSegment.from_mp3(sound_file)
+            
+            # Speed up 2x (change frame rate)
+            audio_fast = audio._spawn(audio.raw_data, overrides={
+                "frame_rate": int(audio.frame_rate * 2.0)
+            })
+            audio_fast = audio_fast.set_frame_rate(44100)
+            
+            # Increase volume by 6dB
+            audio_loud = audio_fast + 6
+            
+            # Export as WAV for faster loading
+            audio_loud.export(processed_file, format='wav')
+            print(f"✅ Processed sound saved: {os.path.basename(processed_file)}")
+            
+            return processed_file
+            
+        except ImportError:
+            print("⚠️  pydub not available - using original sound with higher volume")
+            return None
+        except Exception as e:
+            print(f"⚠️  Could not process sound: {e}")
+            return None
+    
+    def _play_shake_sound(self):
+        """Play the shake sound effect"""
+        if not self.shake_sound:
+            return
+        
+        try:
+            if self.using_pygame:
+                import pygame
+                # Set volume to maximum (1.5 = 150% for extra loudness)
+                self.shake_sound.set_volume(1.5)
+                # Play sound effect (doesn't interfere with music)
+                self.shake_sound.play()
+            else:
+                # Use platform-specific command for quick playback
+                system = platform.system()
+                
+                if system == 'Darwin':  # macOS
+                    # Use afplay in background (non-blocking)
+                    subprocess.Popen(
+                        ['afplay', self.shake_sound],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                elif system == 'Windows':
+                    # Use PowerShell SoundPlayer for quick playback
+                    subprocess.Popen(
+                        ['powershell', '-c', f'(New-Object Media.SoundPlayer "{self.shake_sound}").PlaySync()'],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                    )
+                else:  # Linux
+                    # Use mpg123 or similar
+                    try:
+                        subprocess.Popen(
+                            ['mpg123', '-q', self.shake_sound],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    except FileNotFoundError:
+                        pass
+        except Exception as e:
+            print(f"⚠️  Could not play shake sound: {e}")
+    
+    def _load_scaled_positions(self, screen_width, screen_height):
+        """Load positions from JSON file and scale to current screen dimensions"""
+        positions_file = 'image_positions.json'
+        if not os.path.exists(positions_file):
+            return None
+        
+        try:
+            with open(positions_file, 'r') as f:
+                data = json.load(f)
+            
+            # Check if we have the new format with screen dimensions
+            if isinstance(data, dict) and 'screen_dimensions' in data and 'positions' in data:
+                saved_width = data['screen_dimensions']['width']
+                saved_height = data['screen_dimensions']['height']
+                saved_positions = data['positions']
+                
+                # Calculate scaling factors
+                scale_x = screen_width / saved_width
+                scale_y = screen_height / saved_height
+                
+                print(f"📍 Scaling positions from {saved_width}x{saved_height} to {screen_width}x{screen_height}")
+                print(f"   Scale factors: X={scale_x:.2f}, Y={scale_y:.2f}")
+                
+                # Scale all positions
+                scaled_positions = {}
+                for filename, pos_data in saved_positions.items():
+                    scaled_x = int(pos_data['x'] * scale_x)
+                    scaled_y = int(pos_data['y'] * scale_y)
+                    scaled_positions[filename] = {
+                        'x': scaled_x,
+                        'y': scaled_y,
+                        'type': pos_data['type'],
+                        'angle': pos_data.get('angle', 0)
+                    }
+                return scaled_positions
+            else:
+                # Old format without screen dimensions
+                return data
+        except Exception as e:
+            print(f"⚠️  Could not load positions: {e}")
+            return None
+    
     def _load_images(self):
         """Load all overlay images from assets/images/"""
         images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'images')
@@ -238,25 +417,69 @@ class PerformativeProtocol:
         # Ultimate fallback
         return screen_width // 2, screen_height // 2
     
-    def _wobble_rotate(self, item_id, original_angle, canvas_obj):
-        """Animate a quick shake/wobble on click"""
-        angles = [original_angle - 15, original_angle + 15, original_angle - 10, original_angle + 10, original_angle]
+    def _shake_matcha(self, img_index, canvas_obj):
+        """Animate matcha rotating side-to-side 3 times (like shaking a drink)"""
+        img_data = self.images[img_index]
+        item_id = img_data['item_id']
+        original_x = img_data['x']
+        original_y = img_data['y']
+        original_angle = img_data['angle']
+        original_img = img_data['original_img']
+        img_type = img_data['type']
+        
+        # Rotation sequence: tilt left, tilt right - repeated 3 times
+        single_shake = [
+            original_angle - 20,   # Tilt left
+            original_angle + 20,   # Tilt right
+            original_angle - 15,   # Tilt left
+            original_angle + 15,   # Tilt right
+            original_angle - 10,   # Tilt left
+            original_angle + 10,   # Tilt right
+        ]
+        
+        # Repeat the shake sequence 3 times, then return to original
+        rotation_angles = single_shake * 3 + [original_angle]
+        
+        # Determine size based on image type
+        if img_type in ['matcha', 'cat']:
+            new_height = 180
+        else:
+            new_height = 250
+        
+        original_size = original_img.size
+        aspect_ratio = original_size[0] / original_size[1]
+        new_width = int(new_height * aspect_ratio)
         
         def animate_step(step=0):
-            if step < len(angles):
-                # This is a simplified animation - in practice, you'd need to re-create the image
-                # For now, just schedule the next step
+            if step < len(rotation_angles):
+                # Resize and rotate
+                resized = original_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                rotated = resized.rotate(rotation_angles[step], resample=Image.Resampling.BICUBIC, expand=True)
+                
+                # Convert to PhotoImage
+                new_photo = ImageTk.PhotoImage(rotated)
+                
+                # Update the image on canvas
+                canvas_obj.itemconfig(item_id, image=new_photo)
+                
+                # Store reference to prevent garbage collection
+                img_data['photo'] = new_photo
+                
+                # Schedule next step (50ms delay for faster, more energetic shaking)
                 canvas_obj.after(50, lambda: animate_step(step + 1))
         
         animate_step()
     
-    def _on_matcha_click(self, event, item_id, img_data, canvas_obj):
+    def _on_matcha_click(self, event, item_id, img_index, canvas_obj):
         """Handle click on matcha image"""
         self.matcha_clicks += 1
         print(f"🍵 Matcha click {self.matcha_clicks}/3")
         
-        # Trigger wobble animation
-        self._wobble_rotate(item_id, img_data.get('angle', 0), canvas_obj)
+        # Play shake sound effect
+        self._play_shake_sound()
+        
+        # Trigger shake animation
+        self._shake_matcha(img_index, canvas_obj)
         
         # Dismiss after 3 clicks
         if self.matcha_clicks >= 3:
@@ -277,14 +500,18 @@ class PerformativeProtocol:
         self.overlay_window.attributes('-alpha', 0.85)
         
         # Get screen dimensions
-        screen_width = self.overlay_window.winfo_screenwidth()
-        screen_height = self.overlay_window.winfo_screenheight()
+        self.screen_width = self.overlay_window.winfo_screenwidth()
+        self.screen_height = self.overlay_window.winfo_screenheight()
+        
+        # Load positions from file if requested
+        if self.load_from_file and not self.custom_positions:
+            self.custom_positions = self._load_scaled_positions(self.screen_width, self.screen_height)
         
         # Create canvas with white background
         self.canvas = Canvas(
             self.overlay_window,
-            width=screen_width,
-            height=screen_height,
+            width=self.screen_width,
+            height=self.screen_height,
             bg=self.bg_color,
             highlightthickness=0
         )
@@ -298,18 +525,42 @@ class PerformativeProtocol:
         
         # Place images on canvas with proper spacing
         placed_positions = []
-        base_size = 200  # Standard size for all images
+        max_height = 250  # Max height for images (preserves aspect ratio)
         
         for img_data in loaded_images:
             img = img_data['image']
             img_type = img_data['type']
+            filename = img_data['filename']
+            original_size = img.size
             
-            # Get non-overlapping position
-            x, y = self._get_random_position(screen_width, screen_height, placed_positions)
+            # Check if we have custom positions for this file
+            if self.custom_positions and filename in self.custom_positions:
+                pos_data = self.custom_positions[filename]
+                if isinstance(pos_data, dict):
+                    x, y = pos_data['x'], pos_data['y']
+                else:
+                    x, y = pos_data
+                print(f"📍 Using custom position for {filename}: ({x}, {y})")
+            else:
+                # Get non-overlapping position
+                x, y = self._get_random_position(self.screen_width, self.screen_height, placed_positions)
+            
             placed_positions.append((x, y))
             
-            # Resize image
-            img = img.resize((base_size, base_size), Image.Resampling.LANCZOS)
+            # Random velocity for bouncing animation (pixels per frame)
+            x_velocity = random.uniform(-2, 2)
+            y_velocity = random.uniform(-2, 2)
+            
+            # Resize image maintaining aspect ratio
+            # Scale down matcha and cat images for better quality
+            if img_type in ['matcha', 'cat']:
+                new_height = 180  # Smaller size for matcha and cats
+            else:
+                new_height = max_height
+            
+            aspect_ratio = original_size[0] / original_size[1]
+            new_width = int(new_height * aspect_ratio)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
             # Random rotation (±8 degrees)
             angle = random.uniform(-8, 8)
@@ -324,28 +575,89 @@ class PerformativeProtocol:
             # Store reference to prevent garbage collection
             self.images.append({
                 'photo': photo,
+                'original_img': img_data['image'],
                 'item_id': item_id,
                 'type': img_type,
-                'angle': angle
+                'angle': angle,
+                'x': x,
+                'y': y,
+                'x_velocity': x_velocity,
+                'y_velocity': y_velocity,
+                'size': (new_width, new_height)
             })
             
-            # Bind click event for matcha images
-            if img_type == 'matcha':
+            # Bind click event for ONLY the first matcha image (matcha-removebg-preview(1).png)
+            if img_type == 'matcha' and 'matcha-removebg-preview(1)' in filename:
                 self.canvas.tag_bind(
                     item_id,
                     '<Button-1>',
-                    lambda e, iid=item_id, idata=self.images[-1]: self._on_matcha_click(e, iid, idata, self.canvas)
+                    lambda e, iid=item_id, idx=len(self.images)-1: self._on_matcha_click(e, iid, idx, self.canvas)
                 )
         
         # Play music
         self._play_music()
         
+        # Start animation loop
+        self.animation_running = True
+        self._animate_images()
+        
         print(f"✅ Overlay active with {len(loaded_images)} images")
-        print("🍵 Click matcha 3 times to dismiss!")
+        print("🍵 Click the FIRST matcha (matcha-removebg-preview) 3 times to dismiss!")
+        print("   Note: matcha2 is just decoration, won't respond to clicks")
+        print("🎈 Images are floating and bouncing!")
+    
+    def _animate_images(self):
+        """Animate images to move around and bounce off walls"""
+        if not self.animation_running or not self.canvas:
+            return
+        
+        for img_data in self.images:
+            # Get current position and velocity
+            x = img_data['x']
+            y = img_data['y']
+            x_velocity = img_data['x_velocity']
+            y_velocity = img_data['y_velocity']
+            item_id = img_data['item_id']
+            width, height = img_data['size']
+            
+            # Update position
+            new_x = x + x_velocity
+            new_y = y + y_velocity
+            
+            # Bounce off walls (with some padding for image size)
+            padding = max(width, height) // 2
+            
+            # Left/right walls
+            if new_x - padding <= 0 or new_x + padding >= self.screen_width:
+                x_velocity = -x_velocity
+                # Keep within bounds
+                new_x = max(padding, min(self.screen_width - padding, new_x))
+            
+            # Top/bottom walls
+            if new_y - padding <= 0 or new_y + padding >= self.screen_height:
+                y_velocity = -y_velocity
+                # Keep within bounds
+                new_y = max(padding, min(self.screen_height - padding, new_y))
+            
+            # Update stored position and velocity
+            img_data['x'] = new_x
+            img_data['y'] = new_y
+            img_data['x_velocity'] = x_velocity
+            img_data['y_velocity'] = y_velocity
+            
+            # Move the image on canvas
+            self.canvas.coords(item_id, new_x, new_y)
+        
+        # Schedule next frame (approximately 60 FPS)
+        if self.canvas:
+            self.canvas.after(16, self._animate_images)
     
     def dismiss(self):
         """Dismiss the overlay and stop music"""
         print("\n👋 Dismissing Performative Protocol...")
+        
+        # Stop animation
+        self.animation_running = False
         
         # Stop music
         self._stop_music()
@@ -353,11 +665,20 @@ class PerformativeProtocol:
         # Close overlay window
         if self.overlay_window:
             self.overlay_window.grab_release()
+            
+            # Get the root window before destroying overlay
+            root = self.overlay_window.master
+            
             self.overlay_window.destroy()
             self.overlay_window = None
+        
+        # Close the root window and quit the application
+        if root:
+            root.quit()
+            root.destroy()
         
         # Clear images
         self.images = []
         self.matcha_clicks = 0
         
-        print("✅ Overlay dismissed!")
+        print("✅ Overlay dismissed! App closing...")

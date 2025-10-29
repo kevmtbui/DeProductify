@@ -16,11 +16,10 @@ ENV/
 *.swo
 
 # Project specific
-assets/audio/*.mp3
-assets/audio/*.wav
-assets/images/*.png
-assets/images/*.jpg
 *.log
+
+# Processed audio files
+assets/sfx/shake_processed.wav
 
 # Gemini cache
 .gemini_cache/

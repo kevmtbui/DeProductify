@@ -1,0 +1,68 @@
+{
+  "cat1-removebg-preview.png": {
+    "x": 72,
+    "y": 103,
+    "angle": 3.605444260886225,
+    "type": "cat"
+  },
+  "cat2-removebg-preview.png": {
+    "x": 1269,
+    "y": 152,
+    "angle": 6.480378525486458,
+    "type": "cat"
+  },
+  "cat4-removebg-preview.png": {
+    "x": 132,
+    "y": 840,
+    "angle": -4.546942281443645,
+    "type": "cat"
+  },
+  "earebuds copy.png": {
+    "x": 893,
+    "y": 850,
+    "angle": -0.20347021287428824,
+    "type": "earbuds"
+  },
+  "matcha-removebg-preview(1).png": {
+    "x": 267,
+    "y": 435,
+    "angle": 3.011414554195399,
+    "type": "matcha"
+  },
+  "matcha2-removebg-preview.png": {
+    "x": 1244,
+    "y": 706,
+    "angle": -5.455516948565521,
+    "type": "matcha"
+  },
+  "tote.png": {
+    "x": 959,
+    "y": 246,
+    "angle": -2.464074730683775,
+    "type": "tote"
+  },
+  "tote2-removebg-preview.png": {
+    "x": 501,
+    "y": 785,
+    "angle": -5.604877386575316,
+    "type": "tote"
+  },
+  "vinyl-removebg-preview.png": {
+    "x": 425,
+    "y": 202,
+    "angle": 0.6534247364609609,
+    "type": "vinyl"
+  },
+  "vinyl2-removebg-preview.png": {
+    "x": 644,
+    "y": 468,
+    "angle": 2.8367138087029335,
+    "type": "vinyl"
+  },
+  "vinyl3-removebg-preview.png": {
+    "x": 1112,
+    "y": 488,
+    "angle": -7.709254808480109,
+    "type": "vinyl"
+  }
+}
